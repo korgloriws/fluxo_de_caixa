@@ -1,0 +1,17 @@
+# Servidor web
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+jinja2>=3.1.3
+python-multipart>=0.0.9
+itsdangerous>=2.1.2
+python-dotenv>=1.0.0
+
+# Processamento de dados
+pandas>=2.0.0
+
+# Leitura de extratos e planilhas
+pdfplumber>=0.11.0
+
+# Geração de relatórios
+xlsxwriter>=3.1.0
+fpdf2>=2.7.9

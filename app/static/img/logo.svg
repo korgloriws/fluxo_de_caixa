@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Fluxo de Caixa FUNDEB">
+  <title>Fluxo de Caixa FUNDEB</title>
+  <defs>
+    <linearGradient id="fundoLogo" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fde047"/>
+      <stop offset="0.55" stop-color="#eab308"/>
+      <stop offset="1" stop-color="#ca8a04"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="15" fill="url(#fundoLogo)"/>
+
+  <g fill="none" stroke="#241a02" stroke-width="4.2" stroke-linecap="round">
+    <path d="M12.95 21 A 22 22 0 0 1 51.05 21"/>
+    <path d="M51.05 43 A 22 22 0 0 1 12.95 43"/>
+  </g>
+
+  <g fill="#241a02">
+    <polygon points="53.6,25.4 46.6,21.3 53.5,17.3"/>
+    <polygon points="10.4,38.6 17.4,42.7 10.5,46.7"/>
+  </g>
+
+  <g fill="#241a02">
+    <rect x="21" y="33" width="5" height="8" rx="1.6"/>
+    <rect x="29.5" y="28" width="5" height="13" rx="1.6"/>
+    <rect x="38" y="23" width="5" height="18" rx="1.6"/>
+  </g>
+</svg>

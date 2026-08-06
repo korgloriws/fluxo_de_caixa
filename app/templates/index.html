@@ -1,0 +1,719 @@
+{% extends "base.html" %}
+
+{% block conteudo %}
+<header class="topo">
+  <div class="container">
+    <div class="topo-linha">
+      <div class="marca">
+        <svg class="marca-icone" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="42" height="42" role="img" aria-label="{{ app_name }}">
+          <title>{{ app_name }}</title>
+          <defs>
+            <linearGradient id="fundoLogoMarca" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#fde047"/>
+              <stop offset="0.55" stop-color="#eab308"/>
+              <stop offset="1" stop-color="#ca8a04"/>
+            </linearGradient>
+          </defs>
+          <rect class="logo-fundo" width="64" height="64" rx="15" fill="url(#fundoLogoMarca)"/>
+          <g class="logo-fluxo">
+            <g fill="none" stroke="#241a02" stroke-width="4.2" stroke-linecap="round">
+              <path d="M12.95 21 A 22 22 0 0 1 51.05 21"/>
+              <path d="M51.05 43 A 22 22 0 0 1 12.95 43"/>
+            </g>
+            <g fill="#241a02">
+              <polygon points="53.6,25.4 46.6,21.3 53.5,17.3"/>
+              <polygon points="10.4,38.6 17.4,42.7 10.5,46.7"/>
+            </g>
+          </g>
+          <g class="logo-barras" fill="#241a02">
+            <rect class="logo-barra logo-barra-1" x="21" y="33" width="5" height="8" rx="1.6"/>
+            <rect class="logo-barra logo-barra-2" x="29.5" y="28" width="5" height="13" rx="1.6"/>
+            <rect class="logo-barra logo-barra-3" x="38" y="23" width="5" height="18" rx="1.6"/>
+          </g>
+        </svg>
+        <div>
+          <h1>{{ app_name }}</h1>
+          <p>Fluxo de caixa — receitas, despesas e saldo</p>
+        </div>
+      </div>
+
+      <div class="topo-acoes">
+        <a class="btn btn-fantasma" href="/" title="Voltar ao portal">Portal</a>
+        <a class="btn btn-fantasma" href="/usuarios" id="link-usuarios" hidden title="Somente administrador">Usuários</a>
+        <span class="sessao-status" id="sessao-status">Visualizando</span>
+        <button class="btn btn-primario" id="btn-editar" title="Entrar para editar">Editar</button>
+        <button class="btn btn-fantasma" id="btn-sair" hidden>Sair</button>
+        <button class="btn btn-fantasma" id="btn-exportar-excel" title="Exportar para Excel" aria-label="Exportar para Excel">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Excel
+        </button>
+        <button class="btn btn-fantasma" id="btn-exportar-pdf" title="Exportar para PDF" aria-label="Exportar para PDF">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+          </svg>
+          PDF
+        </button>
+        <button class="btn btn-fantasma btn-icone" id="btn-tema" title="Alternar tema claro/escuro" aria-label="Alternar tema">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icone-claro">
+            <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>
+          </svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icone-escuro" style="display:none">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <nav class="abas" role="tablist">
+      <button class="aba ativa" data-aba="painel" role="tab">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>
+        </svg>
+        Painel
+      </button>
+      <button class="aba" data-aba="lancamentos" role="tab">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/>
+        </svg>
+        Lançamentos
+      </button>
+      <button class="aba" data-aba="movimentos" role="tab">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+        Movimentos
+      </button>
+      <button class="aba" data-aba="historico" role="tab">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        Histórico
+      </button>
+      <button class="aba" data-aba="importar" role="tab">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        Importar
+      </button>
+    </nav>
+  </div>
+</header>
+
+<!-- ===================== Barra de filtros global ===================== -->
+<div class="filtros" id="barra-filtros">
+  <div class="container">
+    <div class="filtros-linha">
+      <div class="chips" id="chips-periodo" role="group" aria-label="Período">
+        <button class="chip" data-periodo="hoje">Hoje</button>
+        <button class="chip" data-periodo="semana">Semana</button>
+        <button class="chip ativo" data-periodo="mes">Mês</button>
+        <button class="chip" data-periodo="mes_anterior">Mês anterior</button>
+        <button class="chip" data-periodo="ano">Ano</button>
+        <button class="chip" data-periodo="personalizado">Personalizado</button>
+      </div>
+
+      <div id="periodo-personalizado">
+        <div class="campo">
+          <label for="filtro-inicio">De</label>
+          <input type="date" id="filtro-inicio" class="entrada" value="{{ primeiro_dia_mes }}">
+        </div>
+        <div class="campo">
+          <label for="filtro-fim">Até</label>
+          <input type="date" id="filtro-fim" class="entrada" value="{{ hoje }}">
+        </div>
+      </div>
+
+      <div class="campo">
+        <label for="filtro-tipo">Tipo</label>
+        <select id="filtro-tipo" class="entrada">
+          <option value="">Todos</option>
+          <option value="receita">Receita</option>
+          <option value="despesa">Despesa</option>
+        </select>
+      </div>
+
+      <div class="campo">
+        <label for="filtro-categoria">Categoria</label>
+        <select id="filtro-categoria" class="entrada">
+          <option value="">Todas</option>
+          {% for categoria in categorias_todas %}
+          <option value="{{ categoria }}">{{ categoria }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="campo">
+        <label for="filtro-busca">Buscar</label>
+        <div class="busca-caixa">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="search" id="filtro-busca" class="entrada" placeholder="Descrição ou categoria...">
+        </div>
+      </div>
+
+      <div class="filtros-espaco"></div>
+
+      <span class="rotulo-periodo" id="rotulo-periodo">—</span>
+
+      <button class="btn btn-pequeno" id="btn-limpar-filtros" title="Limpar todos os filtros">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+        </svg>
+        Limpar
+      </button>
+    </div>
+  </div>
+</div>
+
+<main class="container">
+
+  <!-- ===================== ABA: PAINEL ===================== -->
+  <section class="painel-aba ativo" id="aba-painel" role="tabpanel">
+    <div class="kpis" id="kpis"></div>
+
+    <div class="grade">
+      <div class="cartao col-12">
+        <div class="cartao-cabecalho">
+          <div>
+            <div class="cartao-titulo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/>
+              </svg>
+              Evolução diária
+            </div>
+            <div class="cartao-subtitulo">Receita e despesa realizadas por dia, com o saldo acumulado</div>
+          </div>
+          <div class="chips" id="chips-evolucao">
+            <button class="chip ativo" data-serie="tudo">Tudo</button>
+            <button class="chip" data-serie="fluxo">Só fluxo</button>
+            <button class="chip" data-serie="acumulado">Só acumulado</button>
+          </div>
+        </div>
+        <div class="cartao-corpo cartao-corpo--limpo">
+          <div class="grafico grafico--alto" id="gr-evolucao"></div>
+        </div>
+      </div>
+
+      <div class="cartao col-6">
+        <div class="cartao-cabecalho">
+          <div>
+            <div class="cartao-titulo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
+              </svg>
+              Origem das receitas
+            </div>
+            <div class="cartao-subtitulo">Participação de cada categoria no total arrecadado</div>
+          </div>
+        </div>
+        <div class="cartao-corpo cartao-corpo--limpo">
+          <div class="grafico" id="gr-receita-categoria"></div>
+        </div>
+      </div>
+
+      <div class="cartao col-6">
+        <div class="cartao-cabecalho">
+          <div>
+            <div class="cartao-titulo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
+              </svg>
+              Destino das despesas
+            </div>
+            <div class="cartao-subtitulo">Participação de cada categoria no total gasto</div>
+          </div>
+        </div>
+        <div class="cartao-corpo cartao-corpo--limpo">
+          <div class="grafico" id="gr-despesa-categoria"></div>
+        </div>
+      </div>
+
+      <div class="cartao col-12">
+        <div class="cartao-cabecalho">
+          <div>
+            <div class="cartao-titulo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>
+              </svg>
+              Previsto x Realizado por categoria
+            </div>
+            <div class="cartao-subtitulo">Quanto de cada previsão foi efetivamente executado</div>
+          </div>
+          <div class="chips" id="chips-prev-real">
+            <button class="chip ativo" data-tipo="despesa">Despesas</button>
+            <button class="chip" data-tipo="receita">Receitas</button>
+          </div>
+        </div>
+        <div class="cartao-corpo cartao-corpo--limpo">
+          <div class="grafico" id="gr-previsto-realizado"></div>
+        </div>
+      </div>
+
+      <div class="cartao col-8">
+        <div class="cartao-cabecalho">
+          <div>
+            <div class="cartao-titulo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              Comparativo mensal entre anos
+            </div>
+            <div class="cartao-subtitulo">Receita realizada mês a mês, com o acumulado do exercício</div>
+          </div>
+        </div>
+        <div class="cartao-corpo cartao-corpo--limpo">
+          <div class="grafico" id="gr-mensal"></div>
+        </div>
+      </div>
+
+      <div class="cartao col-4">
+        <div class="cartao-cabecalho">
+          <div>
+            <div class="cartao-titulo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+              Calendário de movimentação
+            </div>
+            <div class="cartao-subtitulo">Dias com maior volume no período</div>
+          </div>
+          <select class="entrada" id="seletor-ano-calendario" style="min-width:92px">
+            {% for ano in anos %}
+            <option value="{{ ano }}">{{ ano }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="cartao-corpo cartao-corpo--limpo">
+          <div class="grafico" id="gr-calendario"></div>
+        </div>
+      </div>
+
+      <div class="cartao col-6">
+        <div class="cartao-cabecalho">
+          <div>
+            <div class="cartao-titulo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+              </svg>
+              Maiores entradas
+            </div>
+            <div class="cartao-subtitulo">Lançamentos de receita mais relevantes do período</div>
+          </div>
+        </div>
+        <div class="cartao-corpo cartao-corpo--limpo">
+          <div class="grafico grafico--baixo" id="gr-ranking-entradas"></div>
+        </div>
+      </div>
+
+      <div class="cartao col-6">
+        <div class="cartao-cabecalho">
+          <div>
+            <div class="cartao-titulo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/>
+              </svg>
+              Maiores saídas
+            </div>
+            <div class="cartao-subtitulo">Lançamentos de despesa mais relevantes do período</div>
+          </div>
+        </div>
+        <div class="cartao-corpo cartao-corpo--limpo">
+          <div class="grafico grafico--baixo" id="gr-ranking-saidas"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ABA: LANÇAMENTOS ===================== -->
+  <section class="painel-aba" id="aba-lancamentos" role="tabpanel">
+    <div class="editor-topo">
+      <div class="campo">
+        <label for="dia-edicao">Dia do lançamento</label>
+        <input type="date" id="dia-edicao" class="entrada" value="{{ hoje }}" style="min-width:170px">
+      </div>
+
+      <div class="editor-abas" id="editor-abas">
+        <button class="editor-aba ativa" data-tipo="receita">Receita</button>
+        <button class="editor-aba" data-tipo="despesa">Despesa</button>
+      </div>
+
+      <div class="filtros-espaco"></div>
+
+      <div class="topo-acoes">
+        <button class="btn" id="btn-ajuste-saldo" title="Lançar ajuste de saldo inicial/corte">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v18"/><path d="M5 12h14"/>
+          </svg>
+          Ajuste de saldo
+        </button>
+        <button class="btn" id="btn-adicionar-linha">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Nova linha
+        </button>
+        <button class="btn btn-sucesso" id="btn-salvar-dia">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+          </svg>
+          Salvar dia
+        </button>
+      </div>
+    </div>
+
+    <div id="aviso-mes"></div>
+    <div id="lista-ajustes-dia" class="ajustes-dia"></div>
+
+    <div class="kpis" id="kpis-dia"></div>
+
+    <div class="cartao">
+      <div class="cartao-cabecalho">
+        <div>
+          <div class="cartao-titulo" id="titulo-grade">Receitas do dia</div>
+          <div class="cartao-subtitulo">Digite os valores em reais. Use vírgula para os centavos, por exemplo 1.234,56</div>
+        </div>
+      </div>
+      <div class="cartao-corpo cartao-corpo--limpo">
+        <div class="tabela-envolucro">
+          <table class="grade-edicao" id="grade-lancamentos">
+            <thead>
+              <tr>
+                <th style="width:24%">Categoria</th>
+                <th style="width:38%">Descrição</th>
+                <th style="width:17%" class="alinhado-direita">Prevista</th>
+                <th style="width:17%" class="alinhado-direita">Realizada</th>
+                <th style="width:44px"></th>
+              </tr>
+            </thead>
+            <tbody id="corpo-grade"></tbody>
+            <tfoot class="rodape-totais">
+              <tr>
+                <td colspan="2">Total do dia</td>
+                <td class="alinhado-direita" id="total-prevista">R$ 0,00</td>
+                <td class="alinhado-direita" id="total-realizada">R$ 0,00</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ABA: MOVIMENTOS ===================== -->
+  <section class="painel-aba" id="aba-movimentos" role="tabpanel">
+    <div class="cartao" style="margin-top:22px">
+      <div class="cartao-cabecalho">
+        <div>
+          <div class="cartao-titulo">Movimentos do período</div>
+          <div class="cartao-subtitulo" id="contador-movimentos">—</div>
+        </div>
+        <div class="legenda-mini">
+          <span><i class="ponto" style="background:var(--verde)"></i> Receita</span>
+          <span><i class="ponto" style="background:var(--vermelho)"></i> Despesa</span>
+        </div>
+      </div>
+      <div class="cartao-corpo cartao-corpo--limpo">
+        <div class="tabela-envolucro">
+          <table class="tabela movimentos-tabela" id="tabela-movimentos">
+            <thead>
+              <tr>
+                <th class="ordenavel" data-campo="data">Data <span class="seta">▾</span></th>
+                <th class="ordenavel col-tipo" data-campo="tipo">Tipo <span class="seta">▾</span></th>
+                <th class="ordenavel col-categoria" data-campo="categoria">Categoria <span class="seta">▾</span></th>
+                <th class="ordenavel" data-campo="descricao">Descrição <span class="seta">▾</span></th>
+                <th class="ordenavel alinhado-direita col-secundaria" data-campo="prevista">Prevista <span class="seta">▾</span></th>
+                <th class="ordenavel alinhado-direita" data-campo="realizada">Realizada <span class="seta">▾</span></th>
+                <th class="alinhado-direita col-secundaria">Desvio</th>
+                <th class="col-terciaria">Origem</th>
+              </tr>
+            </thead>
+            <tbody id="corpo-movimentos"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ABA: HISTÓRICO ===================== -->
+  <section class="painel-aba" id="aba-historico" role="tabpanel">
+    <div class="cartao" style="margin-top:22px">
+      <div class="cartao-cabecalho">
+        <div>
+          <div class="cartao-titulo">Histórico de alterações</div>
+          <div class="cartao-subtitulo" id="contador-historico">
+            Quem alterou o quê e quando — use para auditar e corrigir se necessário
+          </div>
+        </div>
+      </div>
+      <div class="cartao-corpo">
+        <div class="hist-filtros" id="hist-filtros">
+          <div class="campo">
+            <label for="hist-usuario">Usuário</label>
+            <select id="hist-usuario" class="entrada">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="hist-acao">Tipo de alteração</label>
+            <select id="hist-acao" class="entrada">
+              <option value="">Todas</option>
+              <option value="salvar_dia">Edição manual</option>
+              <option value="importar">Importação</option>
+              <option value="restaurar">Restauração</option>
+              <option value="ajuste_saldo">Ajuste de saldo</option>
+              <option value="excluir_ajuste">Exclusão de ajuste</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="hist-tipo">Receita / despesa</label>
+            <select id="hist-tipo" class="entrada">
+              <option value="">Todos</option>
+              <option value="receita">Receita</option>
+              <option value="despesa">Despesa</option>
+            </select>
+          </div>
+          <div class="campo">
+            <label for="hist-inicio">Evento de</label>
+            <input type="date" id="hist-inicio" class="entrada">
+          </div>
+          <div class="campo">
+            <label for="hist-fim">Evento até</label>
+            <input type="date" id="hist-fim" class="entrada">
+          </div>
+          <div class="campo">
+            <label for="hist-data-ref">Dia afetado</label>
+            <input type="date" id="hist-data-ref" class="entrada">
+          </div>
+          <div class="campo hist-campo-busca">
+            <label for="hist-busca">Buscar</label>
+            <div class="busca-caixa">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input type="search" id="hist-busca" class="entrada" placeholder="Resumo, usuário, origem...">
+            </div>
+          </div>
+          <div class="campo">
+            <label for="hist-por-pagina">Por página</label>
+            <select id="hist-por-pagina" class="entrada">
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <div class="hist-filtros-acoes">
+            <button class="btn btn-pequeno" id="btn-hist-limpar" type="button">Limpar</button>
+            <button class="btn btn-pequeno btn-primario" id="btn-hist-aplicar" type="button">Filtrar</button>
+          </div>
+        </div>
+      </div>
+      <div class="cartao-corpo cartao-corpo--limpo">
+        <div class="tabela-envolucro">
+          <table class="tabela" id="tabela-historico">
+            <thead>
+              <tr>
+                <th class="hist-col-quando">Quando</th>
+                <th class="hist-col-user">Usuário</th>
+                <th class="hist-col-acao">Ação</th>
+                <th class="hist-col-dia">Dia</th>
+                <th class="hist-col-tipo">Tipo</th>
+                <th class="hist-col-resumo">Resumo</th>
+                <th class="hist-col-acoes"></th>
+              </tr>
+            </thead>
+            <tbody id="corpo-historico"></tbody>
+          </table>
+        </div>
+        <div class="paginacao" id="hist-paginacao" hidden>
+          <button class="btn btn-pequeno" id="hist-pag-prev" type="button">Anterior</button>
+          <span class="paginacao-info" id="hist-pag-info">—</span>
+          <button class="btn btn-pequeno" id="hist-pag-next" type="button">Próxima</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ABA: IMPORTAR ===================== -->
+  <section class="painel-aba" id="aba-importar" role="tabpanel">
+    <div class="cartao" style="margin-top:22px; max-width:840px">
+      <div class="cartao-cabecalho">
+        <div>
+          <div class="cartao-titulo">Importar extratos e planilhas</div>
+          <div class="cartao-subtitulo">
+            Extratos bancários em PDF são lidos automaticamente e classificados por origem
+            (ICMS, FPM, IPVA, ITR, ITCMD, IPI-EXP). Planilhas .txt ou .csv devem ter colunas de data, descrição e valor.
+          </div>
+        </div>
+      </div>
+      <div class="cartao-corpo">
+        <div class="zona-upload" id="zona-upload">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <h3>Arraste os arquivos aqui ou clique para escolher</h3>
+          <p>Aceita .pdf, .txt e .csv — vários arquivos de uma vez</p>
+          <input type="file" id="entrada-arquivos" multiple accept=".pdf,.txt,.csv" class="sr-only">
+        </div>
+
+        <div class="lista-arquivos" id="lista-arquivos"></div>
+
+        <div style="margin-top:18px; display:flex; gap:9px; justify-content:flex-end">
+          <button class="btn" id="btn-limpar-arquivos" disabled>Limpar</button>
+          <button class="btn btn-primario" id="btn-processar" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Processar arquivos
+          </button>
+        </div>
+
+        <div id="resultado-importacao" style="margin-top:18px"></div>
+      </div>
+    </div>
+  </section>
+
+  <div style="height:28px"></div>
+</main>
+
+<!-- ===================== Modal de ajuste de saldo ===================== -->
+<div class="modal-fundo" id="modal-ajuste-saldo">
+  <div class="modal modal--scroll">
+    <div class="modal-cabecalho">Ajuste de saldo</div>
+    <div class="modal-corpo">
+      <div class="aviso aviso--bloqueado" style="margin:0">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <div class="aviso-conteudo">
+          <strong>Lançamento especial — somente para ajuste</strong>
+          O valor informado vira o <em>saldo inicial</em> dessa data — o fluxo
+          começa a partir dali, ignorando o acumulado anterior.
+          Receitas e despesas do dia entram em cima desse valor.
+          Depois de confirmado, <em>não pode ser alterado</em>.
+          Somente o administrador master pode excluir no futuro.
+        </div>
+      </div>
+
+      <div class="campo">
+        <label for="ajuste-data">Data do ajuste</label>
+        <input type="date" id="ajuste-data" class="entrada">
+      </div>
+      <div class="campo">
+        <label for="ajuste-valor">Novo saldo base (positivo ou negativo)</label>
+        <input type="text" id="ajuste-valor" class="entrada" inputmode="decimal" placeholder="Ex.: 1500000,00">
+      </div>
+      <div class="campo">
+        <label for="ajuste-motivo">Motivo (obrigatório — fica no histórico)</label>
+        <textarea id="ajuste-motivo" class="entrada entrada-area" rows="3" placeholder="Descreva o motivo do ajuste / corte..."></textarea>
+      </div>
+      <div class="campo">
+        <label for="ajuste-senha">Confirme sua senha</label>
+        <input type="password" id="ajuste-senha" class="entrada" autocomplete="current-password">
+      </div>
+    </div>
+    <div class="modal-rodape modal-rodape--wrap">
+      <button class="btn" id="btn-cancelar-ajuste">Cancelar</button>
+      <button class="btn btn-primario" id="btn-confirmar-ajuste">Confirmar ajuste</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== Modal exclusão de ajuste (admin) ===================== -->
+<div class="modal-fundo" id="modal-excluir-ajuste">
+  <div class="modal">
+    <div class="modal-cabecalho">Excluir ajuste de saldo</div>
+    <div class="modal-corpo">
+      <p style="margin:0;color:var(--texto-2)">
+        Esta ação remove o ajuste do saldo e fica registrada no histórico.
+        Somente o administrador master pode fazer isso.
+      </p>
+      <p id="excluir-ajuste-resumo" style="margin:0;font-weight:600"></p>
+      <div class="campo">
+        <label for="excluir-ajuste-senha">Confirme sua senha de administrador</label>
+        <input type="password" id="excluir-ajuste-senha" class="entrada" autocomplete="current-password">
+      </div>
+    </div>
+    <div class="modal-rodape">
+      <button class="btn" id="btn-cancelar-excluir-ajuste">Cancelar</button>
+      <button class="btn btn-primario" id="btn-confirmar-excluir-ajuste">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== Modal de detalhe do histórico ===================== -->
+<div class="modal-fundo" id="modal-historico-detalhe">
+  <div class="modal modal--largo modal--scroll">
+    <div class="modal-cabecalho">Detalhe da alteração</div>
+    <div class="modal-corpo" id="modal-historico-corpo"></div>
+    <div class="modal-rodape modal-rodape--wrap">
+      <button class="btn" id="btn-fechar-historico-detalhe">Fechar</button>
+      <button class="btn" id="btn-ir-dia-historico">Abrir dia</button>
+      <button class="btn btn-primario" id="btn-restaurar-historico" hidden>Restaurar anterior</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== Modal de login ===================== -->
+<div class="modal-fundo" id="modal-login">
+  <div class="modal">
+    <div class="modal-cabecalho">Entrar para editar</div>
+    <div class="modal-corpo">
+      <p style="margin:0; color:var(--texto-2)">
+        A visualização é livre. Para alterar lançamentos, informe login e senha do responsável.
+      </p>
+      <div class="campo">
+        <label for="login-usuario">Login</label>
+        <input type="text" id="login-usuario" class="entrada" autocomplete="username">
+      </div>
+      <div class="campo">
+        <label for="login-senha">Senha</label>
+        <input type="password" id="login-senha" class="entrada" autocomplete="current-password">
+      </div>
+    </div>
+    <div class="modal-rodape">
+      <button class="btn" id="btn-cancelar-login">Cancelar</button>
+      <button class="btn btn-primario" id="btn-confirmar-login">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== Modal de mês histórico ===================== -->
+<div class="modal-fundo" id="modal-historico">
+  <div class="modal">
+    <div class="modal-cabecalho">Dados históricos</div>
+    <div class="modal-corpo">
+      <p style="margin:0; color:var(--texto-2)">
+        O mês <strong id="modal-mes">—</strong> já foi encerrado. Alterar esses lançamentos
+        modifica o histórico oficial. Para continuar, confirme a senha do usuário logado.
+      </p>
+      <div class="campo">
+        <label for="modal-senha-input">Sua senha</label>
+        <input type="password" id="modal-senha-input" class="entrada" autocomplete="current-password">
+      </div>
+    </div>
+    <div class="modal-rodape">
+      <button class="btn" id="btn-cancelar-senha">Cancelar</button>
+      <button class="btn btn-primario" id="btn-confirmar-senha">Confirmar e liberar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.CONFIG_FUNDEB = {
+    hoje: "{{ hoje }}",
+    categoriasReceita: {{ categorias_receita | tojson }},
+    categoriasDespesa: {{ categorias_despesa | tojson }},
+    anos: {{ anos | tojson }},
+    usuario: {{ usuario | tojson }}
+  };
+</script>
+<script src="/static/js/auth-ui.js?v=1"></script>
+<script src="/static/js/graficos.js"></script>
+<script src="/static/js/app.js?v=9"></script>
+{% endblock %}
