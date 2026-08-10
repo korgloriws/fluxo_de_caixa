@@ -18,10 +18,12 @@
     modoEvolucao: 'tudo',
     tipoPrevReal: 'despesa',
     ordenacao: { campo: 'data', crescente: false },
-    arquivos: [],
+    arquivos: { receita: [], despesa: [] },
     usuario: window.CONFIG_FUNDEB.usuario || null,
     mesAtualEncerrado: false,
     mesAtual: null,
+    previsaoMensal: null,
+    ehAdmin: false,
     ajustesDia: [],
     ajusteExcluirId: null,
     historico: {
@@ -113,19 +115,20 @@
     const btnEditar = $('#btn-editar');
     const btnSair = $('#btn-sair');
     const linkUsuarios = $('#link-usuarios');
+    const painelBackup = $('#painel-backup');
 
     if (estado.usuario) {
-      status.textContent = `Editando como ${estado.usuario.nome}`;
-      status.classList.add('sessao-status--ativo');
+      AuthUI.preencherBotaoPerfil(status, estado.usuario);
       btnEditar.hidden = true;
       btnSair.hidden = false;
       if (linkUsuarios) linkUsuarios.hidden = !estado.usuario.eh_admin;
+      if (painelBackup) painelBackup.hidden = !estado.usuario.eh_admin;
     } else {
-      status.textContent = 'Visualizando';
-      status.classList.remove('sessao-status--ativo');
+      AuthUI.marcarVisualizando(status);
       btnEditar.hidden = false;
       btnSair.hidden = true;
       if (linkUsuarios) linkUsuarios.hidden = true;
+      if (painelBackup) painelBackup.hidden = true;
     }
   }
 
@@ -135,12 +138,26 @@
     carregarDia(estado.diaAtual);
   }
 
+  function aoAtualizarPerfil(usuario) {
+    estado.usuario = usuario;
+    if (window.CONFIG_FUNDEB) window.CONFIG_FUNDEB.usuario = usuario;
+    atualizarBarraSessao();
+  }
+
   AuthUI.ligarModalLogin({ onSuccess: aoAutenticar });
+  AuthUI.ligarModalPerfil({
+    getUsuario: () => estado.usuario,
+    onSuccess: aoAtualizarPerfil,
+  });
   atualizarBarraSessao();
 
   $('#btn-editar').addEventListener('click', () => {
     if (estado.usuario) return;
     AuthUI.abrirLogin();
+  });
+
+  $('#sessao-status')?.addEventListener('click', () => {
+    if (estado.usuario) AuthUI.abrirPerfil(estado.usuario);
   });
 
   $('#btn-sair').addEventListener('click', async () => {
@@ -439,7 +456,7 @@
       `${comValor.length} lançamento(s) com valor · ${movimentos.length} linha(s) no total`;
 
     if (!comValor.length) {
-      corpo.innerHTML = `<tr><td colspan="8">
+      corpo.innerHTML = `<tr><td colspan="9">
         <div class="vazio">
           <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
             <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/>
@@ -454,7 +471,7 @@
     const ordenados = [...comValor].sort((a, b) => {
       const x = a[campo];
       const y = b[campo];
-      const comparacao = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'pt-BR');
+      const comparacao = typeof x === 'number' ? x - y : String(x || '').localeCompare(String(y || ''), 'pt-BR');
       return crescente ? comparacao : -comparacao;
     });
 
@@ -462,11 +479,28 @@
       .map((m) => {
         const desvio = m.realizada - m.prevista;
         const classeDesvio = desvio > 0 ? 'positivo' : desvio < 0 ? 'negativo' : '';
+        const credor =
+          m.tipo === 'despesa'
+            ? m.nome_credor || '<span style="color:var(--texto-3)">—</span>'
+            : '<span style="color:var(--texto-3)">—</span>';
+        const detalhe =
+          m.tipo === 'despesa' && (m.op || m.nap || m.processo)
+            ? `<div style="font-size:11px;color:var(--texto-3);margin-top:2px">OP ${escapar(m.op || '—')} · NAP ${escapar(m.nap || '—')} · Proc. ${escapar(m.processo || '—')}</div>`
+            : '';
         return `<tr>
           <td class="num">${fmtData(m.data)}</td>
           <td class="col-tipo"><span class="etiqueta etiqueta--${m.tipo}">${m.tipo === 'receita' ? 'Receita' : 'Despesa'}</span></td>
-          <td class="col-categoria">${m.categoria || '<span style="color:var(--texto-3)">—</span>'}</td>
-          <td>${m.descricao || '<span style="color:var(--texto-3)">—</span>'}</td>
+          <td class="col-categoria">${m.categoria || m.ug || '<span style="color:var(--texto-3)">—</span>'}</td>
+          <td>${credor}</td>
+          <td>
+            <button type="button" class="celula-entrada celula-entrada--descricao celula-entrada--botao"
+                    data-acao="ver-descricao-mov"
+                    data-texto="${encodeURIComponent(m.descricao || '')}"
+                    title="Clique para ver a descrição completa">
+              ${m.descricao ? escapar(m.descricao) : '—'}
+            </button>
+            ${detalhe}
+          </td>
           <td class="alinhado-direita num col-secundaria">${m.prevista ? fmtNumero(m.prevista) : '—'}</td>
           <td class="alinhado-direita num">${m.realizada ? fmtNumero(m.realizada) : '—'}</td>
           <td class="alinhado-direita num col-secundaria ${classeDesvio}">${desvio ? fmtNumero(desvio) : '—'}</td>
@@ -504,14 +538,45 @@
       estado.linhas.despesa = dados.despesas;
       estado.diaEditavel = dados.editavel;
       estado.ajustesDia = dados.ajustes_saldo || [];
+      estado.previsaoMensal = dados.previsao_mensal || null;
+      estado.ehAdmin = !!dados.eh_admin;
 
       renderizarAvisoMes(dados);
+      renderizarAvisoPrevisao(dados);
       renderizarAjustesDia(estado.ajustesDia);
       renderizarKpisDia(dados.totais);
       renderizarGrade();
     } catch (erro) {
       notificar(`Erro ao carregar o dia: ${erro.message}`, 'erro');
     }
+  }
+
+  function renderizarAvisoPrevisao(dados) {
+    const caixa = $('#aviso-previsao');
+    if (!caixa) return;
+    const prev = dados.previsao_mensal || {};
+    const rec = prev.receita;
+    const desp = prev.despesa;
+    if (!rec && !desp) {
+      caixa.innerHTML = '';
+      return;
+    }
+    const partes = [];
+    if (rec) partes.push(`receita ${fmtMoeda(rec.valor)}`);
+    if (desp) partes.push(`despesa ${fmtMoeda(desp.valor)}`);
+    const trava = dados.eh_admin
+      ? 'Você (admin) pode alterar pela opção Previsão mensal.'
+      : 'A coluna Prevista está travada — somente o administrador altera a previsão mensal.';
+    caixa.innerHTML = `
+      <div class="aviso aviso--info">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 17V9"/><path d="M12 17V5"/><path d="M16 17v-6"/>
+        </svg>
+        <div class="aviso-conteudo">
+          <strong>Previsão mensal de ${escapar(dados.mes)}</strong>
+          Cada item recebe o valor integral em todos os dias: ${partes.join(' · ')}. ${trava}
+        </div>
+      </div>`;
   }
 
   function renderizarAvisoMes(dados) {
@@ -626,15 +691,87 @@
     const linhas = estado.linhas[tipo];
     const categorias =
       tipo === 'receita' ? window.CONFIG_FUNDEB.categoriasReceita : window.CONFIG_FUNDEB.categoriasDespesa;
+    const modoDespesa = tipo === 'despesa';
 
-    $('#titulo-grade').textContent = tipo === 'receita' ? 'Receitas do dia' : 'Despesas do dia';
+    $('#titulo-grade').textContent = modoDespesa ? 'Despesas do dia' : 'Receitas do dia';
     $('#btn-adicionar-linha').disabled = !estado.diaEditavel;
     $('#btn-salvar-dia').disabled = !estado.diaEditavel;
 
-    const desabilitado = estado.diaEditavel ? '' : 'disabled';
+    if (modoDespesa) {
+      $('#cabecalho-grade').innerHTML = `<tr>
+        <th style="width:8%">OP</th>
+        <th style="width:8%">NAP</th>
+        <th style="width:10%">Processo</th>
+        <th style="width:8%">UG</th>
+        <th style="width:16%">Nome credor</th>
+        <th style="width:22%">Histórico</th>
+        <th style="width:12%" class="alinhado-direita">Prevista</th>
+        <th style="width:12%" class="alinhado-direita">Vr pago</th>
+        <th style="width:44px"></th>
+      </tr>`;
+      $('#rodape-grade').innerHTML = `<tr>
+        <td colspan="6" id="rodape-label">Total do dia</td>
+        <td class="alinhado-direita" id="total-prevista">R$ 0,00</td>
+        <td class="alinhado-direita" id="total-realizada">R$ 0,00</td>
+        <td></td>
+      </tr>`;
+    } else {
+      $('#cabecalho-grade').innerHTML = `<tr>
+        <th style="width:24%">Categoria</th>
+        <th style="width:38%">Descrição</th>
+        <th style="width:17%" class="alinhado-direita">Prevista</th>
+        <th style="width:17%" class="alinhado-direita">Realizada</th>
+        <th style="width:44px"></th>
+      </tr>`;
+      $('#rodape-grade').innerHTML = `<tr>
+        <td colspan="2" id="rodape-label">Total do dia</td>
+        <td class="alinhado-direita" id="total-prevista">R$ 0,00</td>
+        <td class="alinhado-direita" id="total-realizada">R$ 0,00</td>
+        <td></td>
+      </tr>`;
+    }
 
     $('#corpo-grade').innerHTML = linhas
       .map((linha, indice) => {
+        const travadaPrevista = !!(linha.travada_prevista && !estado.ehAdmin);
+        const bloqueioGeral = estado.diaEditavel ? '' : 'disabled';
+        const bloqueioPrevista = !estado.diaEditavel || travadaPrevista ? 'disabled' : '';
+        const classeLinha = travadaPrevista ? ' class="linha-travada"' : '';
+        const tituloTravada = travadaPrevista
+          ? 'title="Prevista definida pela previsão mensal — somente administrador altera"'
+          : '';
+
+        if (modoDespesa) {
+          return `<tr data-indice="${indice}"${classeLinha} ${tituloTravada}>
+            <td><input class="celula-entrada" data-campo="op" value="${escapar(linha.op || '')}" ${bloqueioGeral}></td>
+            <td><input class="celula-entrada" data-campo="nap" value="${escapar(linha.nap || '')}" ${bloqueioGeral}></td>
+            <td><input class="celula-entrada" data-campo="processo" value="${escapar(linha.processo || '')}" ${bloqueioGeral}></td>
+            <td><input class="celula-entrada" data-campo="ug" value="${escapar(linha.ug || linha.categoria || '')}" ${bloqueioGeral}></td>
+            <td><input class="celula-entrada" data-campo="nome_credor" value="${escapar(linha.nome_credor || '')}" ${bloqueioGeral}></td>
+            <td>
+              <input class="celula-entrada celula-entrada--descricao" data-campo="descricao" data-acao="ver-descricao"
+                     value="${escapar(linha.descricao || '')}" readonly
+                     title="Clique para ver o histórico completo"
+                     placeholder="Histórico">
+            </td>
+            <td>
+              <input class="celula-entrada numero" data-campo="prevista" inputmode="decimal"
+                     value="${linha.prevista ? fmtNumero(linha.prevista) : ''}" placeholder="0,00" ${bloqueioPrevista}>
+            </td>
+            <td>
+              <input class="celula-entrada numero" data-campo="realizada" inputmode="decimal"
+                     value="${linha.realizada ? fmtNumero(linha.realizada) : ''}" placeholder="0,00" ${bloqueioGeral}>
+            </td>
+            <td class="acoes-linha">
+              <button class="btn-remover" data-acao="remover" title="Remover linha" ${bloqueioGeral}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </td>
+          </tr>`;
+        }
+
         const opcoes = categorias
           .map((c) => `<option value="${c}" ${c === linha.categoria ? 'selected' : ''}>${c}</option>`)
           .join('');
@@ -642,23 +779,26 @@
           ? ''
           : `<option value="${linha.categoria}" selected>${linha.categoria || '—'}</option>`;
 
-        return `<tr data-indice="${indice}">
+        return `<tr data-indice="${indice}"${classeLinha} ${tituloTravada}>
           <td>
-            <select class="celula-entrada" data-campo="categoria" ${desabilitado}>${extra}${opcoes}</select>
+            <select class="celula-entrada" data-campo="categoria" ${bloqueioGeral}>${extra}${opcoes}</select>
           </td>
           <td>
-            <input class="celula-entrada" data-campo="descricao" value="${escapar(linha.descricao)}" ${desabilitado}>
+            <input class="celula-entrada celula-entrada--descricao" data-campo="descricao" data-acao="ver-descricao"
+                   value="${escapar(linha.descricao || '')}" readonly
+                   title="Clique para ver a descrição completa"
+                   placeholder="Descrição">
           </td>
           <td>
             <input class="celula-entrada numero" data-campo="prevista" inputmode="decimal"
-                   value="${linha.prevista ? fmtNumero(linha.prevista) : ''}" placeholder="0,00" ${desabilitado}>
+                   value="${linha.prevista ? fmtNumero(linha.prevista) : ''}" placeholder="0,00" ${bloqueioPrevista}>
           </td>
           <td>
             <input class="celula-entrada numero" data-campo="realizada" inputmode="decimal"
-                   value="${linha.realizada ? fmtNumero(linha.realizada) : ''}" placeholder="0,00" ${desabilitado}>
+                   value="${linha.realizada ? fmtNumero(linha.realizada) : ''}" placeholder="0,00" ${bloqueioGeral}>
           </td>
           <td class="acoes-linha">
-            <button class="btn-remover" data-acao="remover" title="Remover linha" ${desabilitado}>
+            <button class="btn-remover" data-acao="remover" title="Remover linha" ${bloqueioGeral}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
@@ -699,6 +839,9 @@
       linha[campo] = paraNumero(alvo.value);
       alvo.classList.add('alterada');
       atualizarTotaisGrade();
+    } else if (campo === 'ug') {
+      linha.ug = alvo.value;
+      linha.categoria = alvo.value || 'DESPESA';
     } else {
       linha[campo] = alvo.value;
     }
@@ -723,11 +866,101 @@
   );
 
   $('#corpo-grade').addEventListener('click', (evento) => {
+    const verDesc = evento.target.closest('[data-acao="ver-descricao"]');
+    if (verDesc) {
+      const indice = Number(verDesc.closest('tr').dataset.indice);
+      abrirModalDescricaoGrade(indice);
+      return;
+    }
     const botao = evento.target.closest('[data-acao="remover"]');
     if (!botao) return;
     const indice = Number(botao.closest('tr').dataset.indice);
     estado.linhas[estado.tipoEditor].splice(indice, 1);
     renderizarGrade();
+  });
+
+  $('#corpo-movimentos')?.addEventListener('click', (evento) => {
+    const botao = evento.target.closest('[data-acao="ver-descricao-mov"]');
+    if (!botao) return;
+    let texto = '';
+    try {
+      texto = decodeURIComponent(botao.dataset.texto || '');
+    } catch (_) {
+      texto = botao.dataset.texto || '';
+    }
+    abrirModalDescricaoTexto(texto, {
+      titulo: 'Descrição / histórico completo',
+      editavel: false,
+    });
+  });
+
+  /* ==================== Modal descrição / histórico completo ==================== */
+
+  let descricaoModal = { origem: null, indice: null, editavel: false };
+
+  function abrirModalDescricaoTexto(texto, { titulo, editavel, ajuda, origem = null, indice = null } = {}) {
+    descricaoModal = { origem, indice, editavel: !!editavel };
+    $('#modal-descricao-titulo').textContent = titulo || 'Descrição completa';
+    $('#modal-descricao-ajuda').textContent =
+      ajuda ||
+      (editavel
+        ? 'Edite o texto completo abaixo e clique em Aplicar para gravar na linha.'
+        : 'Texto completo do lançamento para conferência.');
+    const campo = $('#modal-descricao-texto');
+    campo.value = texto || '';
+    campo.readOnly = !editavel;
+    campo.classList.toggle('entrada--somente-leitura', !editavel);
+    $('#btn-aplicar-descricao').hidden = !editavel;
+    $('#modal-descricao-completa').classList.add('aberto');
+    setTimeout(() => campo.focus(), 40);
+  }
+
+  function abrirModalDescricaoGrade(indice) {
+    const linha = estado.linhas[estado.tipoEditor]?.[indice];
+    if (!linha) return;
+    const modoDespesa = estado.tipoEditor === 'despesa';
+    const editavel = !!estado.diaEditavel;
+    abrirModalDescricaoTexto(linha.descricao || '', {
+      titulo: modoDespesa ? 'Histórico completo' : 'Descrição completa',
+      editavel,
+      origem: 'grade',
+      indice,
+      ajuda: editavel
+        ? 'Edite o texto completo e clique em Aplicar para atualizar a linha (lembre de Salvar o dia).'
+        : 'Texto completo para conferência. Entre no modo edição para alterar.',
+    });
+  }
+
+  function fecharModalDescricao() {
+    $('#modal-descricao-completa').classList.remove('aberto');
+    descricaoModal = { origem: null, indice: null, editavel: false };
+  }
+
+  function aplicarModalDescricao() {
+    if (!descricaoModal.editavel || descricaoModal.origem !== 'grade') {
+      fecharModalDescricao();
+      return;
+    }
+    const linha = estado.linhas[estado.tipoEditor]?.[descricaoModal.indice];
+    if (!linha) {
+      fecharModalDescricao();
+      return;
+    }
+    linha.descricao = $('#modal-descricao-texto').value;
+    fecharModalDescricao();
+    renderizarGrade();
+  }
+
+  $('#btn-fechar-descricao')?.addEventListener('click', fecharModalDescricao);
+  $('#btn-aplicar-descricao')?.addEventListener('click', aplicarModalDescricao);
+  $('#modal-descricao-completa')?.addEventListener('click', (e) => {
+    if (e.target.id === 'modal-descricao-completa') fecharModalDescricao();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if ($('#modal-descricao-completa')?.classList.contains('aberto')) {
+      fecharModalDescricao();
+    }
   });
 
   // Enter desce para a mesma coluna na linha seguinte, como numa planilha.
@@ -757,22 +990,38 @@
   $('#dia-edicao').addEventListener('change', (e) => carregarDia(e.target.value));
 
   $('#btn-adicionar-linha').addEventListener('click', () => {
-    const categorias =
-      estado.tipoEditor === 'receita'
-        ? window.CONFIG_FUNDEB.categoriasReceita
-        : window.CONFIG_FUNDEB.categoriasDespesa;
-
-    estado.linhas[estado.tipoEditor].push({
-      categoria: categorias[categorias.length - 1],
-      descricao: '',
-      prevista: 0,
-      realizada: 0,
-    });
+    if (estado.tipoEditor === 'despesa') {
+      estado.linhas.despesa.push({
+        categoria: 'DESPESA',
+        descricao: '',
+        prevista: 0,
+        realizada: 0,
+        op: '',
+        nap: '',
+        processo: '',
+        ug: '',
+        nome_credor: '',
+      });
+    } else {
+      const categorias = window.CONFIG_FUNDEB.categoriasReceita;
+      estado.linhas.receita.push({
+        categoria: categorias[categorias.length - 1],
+        descricao: '',
+        prevista: 0,
+        realizada: 0,
+      });
+    }
 
     renderizarGrade();
     const linhas = $$('#corpo-grade tr');
     const ultima = linhas[linhas.length - 1];
-    if (ultima) ultima.querySelector('[data-campo="descricao"]').focus();
+    if (ultima) {
+      const foco =
+        estado.tipoEditor === 'despesa'
+          ? ultima.querySelector('[data-campo="nome_credor"]')
+          : ultima.querySelector('[data-campo="descricao"]');
+      if (foco) foco.focus();
+    }
   });
 
   $('#btn-salvar-dia').addEventListener('click', async () => {
@@ -868,103 +1117,157 @@
 
   /* ==================== Importação ==================== */
 
-  const zona = $('#zona-upload');
-  const entradaArquivos = $('#entrada-arquivos');
-
-  zona.addEventListener('click', () => entradaArquivos.click());
-
-  ['dragenter', 'dragover'].forEach((evento) =>
-    zona.addEventListener(evento, (e) => {
-      e.preventDefault();
-      zona.classList.add('arrastando');
-    })
-  );
-
-  ['dragleave', 'drop'].forEach((evento) =>
-    zona.addEventListener(evento, (e) => {
-      e.preventDefault();
-      zona.classList.remove('arrastando');
-    })
-  );
-
-  zona.addEventListener('drop', (e) => adicionarArquivos(e.dataTransfer.files));
-  entradaArquivos.addEventListener('change', (e) => adicionarArquivos(e.target.files));
-
-  function adicionarArquivos(lista) {
-    estado.arquivos = [...estado.arquivos, ...Array.from(lista)];
-    renderizarArquivos();
+  function extensaoArquivo(nome) {
+    const partes = String(nome || '').toLowerCase().split('.');
+    return partes.length > 1 ? partes.pop() : '';
   }
 
-  function renderizarArquivos() {
-    const temArquivos = estado.arquivos.length > 0;
-    $('#btn-processar').disabled = !temArquivos;
-    $('#btn-limpar-arquivos').disabled = !temArquivos;
+  function ligarZonaImportacao({ tipo, zonaId, inputId, listaId, btnLimparId, btnProcessarId, resultadoId, extensoes, rotulo }) {
+    const zona = $(zonaId);
+    const entrada = $(inputId);
+    if (!zona || !entrada) return;
 
-    $('#lista-arquivos').innerHTML = estado.arquivos
-      .map(
-        (arquivo, indice) => `
-        <div class="arquivo-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-          </svg>
-          <span class="nome">${escapar(arquivo.name)}</span>
-          <span style="color:var(--texto-3);font-size:12px">${(arquivo.size / 1024).toFixed(0)} KB</span>
-          <button class="btn-remover" data-indice="${indice}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+    const aceitas = new Set(extensoes);
+
+    function renderizarLista() {
+      const lista = estado.arquivos[tipo];
+      const tem = lista.length > 0;
+      $(btnProcessarId).disabled = !tem;
+      $(btnLimparId).disabled = !tem;
+
+      $(listaId).innerHTML = lista
+        .map(
+          (arquivo, indice) => `
+          <div class="arquivo-item">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
             </svg>
-          </button>
-        </div>`
-      )
-      .join('');
+            <span class="nome">${escapar(arquivo.name)}</span>
+            <span style="color:var(--texto-3);font-size:12px">${(arquivo.size / 1024).toFixed(0)} KB</span>
+            <button class="btn-remover" data-indice="${indice}" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>`
+        )
+        .join('');
 
-    $$('#lista-arquivos .btn-remover').forEach((botao) =>
-      botao.addEventListener('click', () => {
-        estado.arquivos.splice(Number(botao.dataset.indice), 1);
-        renderizarArquivos();
+      $$(`${listaId} .btn-remover`).forEach((botao) =>
+        botao.addEventListener('click', () => {
+          estado.arquivos[tipo].splice(Number(botao.dataset.indice), 1);
+          renderizarLista();
+        })
+      );
+    }
+
+    function adicionarArquivos(lista) {
+      const validos = [];
+      const rejeitados = [];
+      Array.from(lista || []).forEach((arquivo) => {
+        const ext = extensaoArquivo(arquivo.name);
+        if (aceitas.has(ext)) validos.push(arquivo);
+        else rejeitados.push(arquivo.name);
+      });
+
+      if (rejeitados.length) {
+        notificar(
+          `${rotulo}: arquivo(s) ignorado(s) — use apenas ${extensoes.map((e) => '.' + e).join(', ')}.`,
+          'aviso'
+        );
+      }
+      if (!validos.length) return;
+
+      estado.arquivos[tipo] = [...estado.arquivos[tipo], ...validos];
+      renderizarLista();
+    }
+
+    zona.addEventListener('click', () => entrada.click());
+    ['dragenter', 'dragover'].forEach((evento) =>
+      zona.addEventListener(evento, (e) => {
+        e.preventDefault();
+        zona.classList.add('arrastando');
       })
     );
+    ['dragleave', 'drop'].forEach((evento) =>
+      zona.addEventListener(evento, (e) => {
+        e.preventDefault();
+        zona.classList.remove('arrastando');
+      })
+    );
+    zona.addEventListener('drop', (e) => adicionarArquivos(e.dataTransfer.files));
+    entrada.addEventListener('change', (e) => {
+      adicionarArquivos(e.target.files);
+      entrada.value = '';
+    });
+
+    $(btnLimparId).addEventListener('click', () => {
+      estado.arquivos[tipo] = [];
+      $(resultadoId).innerHTML = '';
+      renderizarLista();
+    });
+
+    $(btnProcessarId).addEventListener('click', async () => {
+      if (!estado.usuario) {
+        notificar('Faça login para importar arquivos.', 'aviso');
+        AuthUI.abrirLogin();
+        return;
+      }
+      if (!estado.arquivos[tipo].length) return;
+
+      const corpo = new FormData();
+      estado.arquivos[tipo].forEach((arquivo) => corpo.append('arquivos', arquivo));
+
+      try {
+        const resultado = await requisitar('/api/importar', { method: 'POST', body: corpo });
+        renderizarResultadoImportacao(resultado, resultadoId);
+
+        const totalDias = (resultado.dias || []).length;
+        if (totalDias) {
+          notificar(`${rotulo}: ${totalDias} dia(s) atualizado(s).`, 'sucesso');
+          carregarPainel();
+          carregarDia(estado.diaAtual);
+        } else {
+          notificar(`${rotulo}: nenhum dado novo foi gravado. Veja o detalhe abaixo.`, 'aviso');
+        }
+
+        estado.arquivos[tipo] = [];
+        renderizarLista();
+      } catch (erro) {
+        notificar(`Falha na importação de ${rotulo.toLowerCase()}: ${erro.message}`, 'erro');
+      }
+    });
+
+    renderizarLista();
   }
 
-  $('#btn-limpar-arquivos').addEventListener('click', () => {
-    estado.arquivos = [];
-    entradaArquivos.value = '';
-    $('#resultado-importacao').innerHTML = '';
-    renderizarArquivos();
+  ligarZonaImportacao({
+    tipo: 'receita',
+    zonaId: '#zona-upload-receita',
+    inputId: '#entrada-receita',
+    listaId: '#lista-arquivos-receita',
+    btnLimparId: '#btn-limpar-receita',
+    btnProcessarId: '#btn-processar-receita',
+    resultadoId: '#resultado-importacao-receita',
+    extensoes: ['pdf'],
+    rotulo: 'Receita',
   });
 
-  $('#btn-processar').addEventListener('click', async () => {
-    if (!estado.usuario) {
-      notificar('Faça login para importar arquivos.', 'aviso');
-      AuthUI.abrirLogin();
-      return;
-    }
-
-    const corpo = new FormData();
-    estado.arquivos.forEach((arquivo) => corpo.append('arquivos', arquivo));
-
-    try {
-      const resultado = await requisitar('/api/importar', { method: 'POST', body: corpo });
-      renderizarResultadoImportacao(resultado);
-
-      const totalDias = resultado.dias.length;
-      if (totalDias) {
-        notificar(`Importação concluída: ${totalDias} dia(s) atualizado(s).`, 'sucesso');
-        carregarPainel();
-        carregarDia(estado.diaAtual);
-      } else {
-        notificar('Nenhum dado novo foi gravado. Verifique o detalhamento abaixo.', 'aviso');
-      }
-
-      estado.arquivos = [];
-      entradaArquivos.value = '';
-      renderizarArquivos();
-    } catch (erro) {
-      notificar(`Falha na importação: ${erro.message}`, 'erro');
-    }
+  ligarZonaImportacao({
+    tipo: 'despesa',
+    zonaId: '#zona-upload-despesa',
+    inputId: '#entrada-despesa',
+    listaId: '#lista-arquivos-despesa',
+    btnLimparId: '#btn-limpar-despesa',
+    btnProcessarId: '#btn-processar-despesa',
+    resultadoId: '#resultado-importacao-despesa',
+    extensoes: ['csv'],
+    rotulo: 'Despesa',
   });
 
-  function renderizarResultadoImportacao(resultado) {
+  function renderizarResultadoImportacao(resultado, seletor) {
+    const host = $(seletor);
+    if (!host) return;
     const partes = [];
 
     if (resultado.processados.length) {
@@ -976,7 +1279,7 @@
           <div class="aviso-conteudo">
             <strong>${resultado.processados.length} arquivo(s) processado(s)</strong>
             ${resultado.processados
-              .map((p) => `${escapar(p.arquivo)} — ${p.dias_gravados} dia(s) gravado(s)`)
+              .map((p) => `${escapar(p.arquivo)} — ${p.tipo || ''} · ${p.dias_gravados} dia(s)`)
               .join('<br>')}
           </div>
         </div>`);
@@ -1010,21 +1313,113 @@
         </div>`);
     }
 
-    if (resultado.erros.length) {
+    if (resultado.erros && resultado.erros.length) {
       partes.push(`
         <div class="aviso aviso--bloqueado">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
           <div class="aviso-conteudo">
-            <strong>Erros</strong>
+            <strong>${resultado.erros.length} erro(s)</strong>
             ${resultado.erros.map((e) => `${escapar(e.arquivo)}: ${escapar(e.motivo)}`).join('<br>')}
           </div>
         </div>`);
     }
 
-    $('#resultado-importacao').innerHTML = partes.join('');
+    host.innerHTML = partes.join('');
   }
+
+  /* ==================== Backup / restauração ==================== */
+
+  $('#btn-baixar-backup')?.addEventListener('click', async () => {
+    if (!(estado.usuario && estado.usuario.eh_admin)) {
+      notificar('Somente o administrador pode baixar o banco.', 'erro');
+      return;
+    }
+    try {
+      const resposta = await fetch('/api/backup/baixar', { method: 'GET' });
+      if (!resposta.ok) {
+        let detalhe = `Erro ${resposta.status}`;
+        const tipo = resposta.headers.get('content-type') || '';
+        if (tipo.includes('application/json')) {
+          const corpo = await resposta.json().catch(() => null);
+          if (corpo && corpo.erro) detalhe = corpo.erro;
+        }
+        throw new Error(detalhe);
+      }
+      const blob = await resposta.blob();
+      const disposicao = resposta.headers.get('content-disposition') || '';
+      const match = /filename="?([^"]+)"?/i.exec(disposicao);
+      const nome = match ? match[1] : `fluxo_backup_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.db`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = nome;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      notificar('Backup baixado. Guarde o arquivo .db em local seguro.', 'sucesso');
+    } catch (erro) {
+      notificar(erro.message, 'erro');
+    }
+  });
+
+  $('#btn-restaurar-backup')?.addEventListener('click', async () => {
+    if (!(estado.usuario && estado.usuario.eh_admin)) {
+      notificar('Somente o administrador pode restaurar o banco.', 'erro');
+      return;
+    }
+    const arquivo = $('#backup-arquivo')?.files?.[0];
+    const senha = $('#backup-senha')?.value || '';
+    if (!arquivo) {
+      notificar('Selecione o arquivo .db de backup.', 'aviso');
+      return;
+    }
+    if (!senha) {
+      notificar('Informe a senha de administrador para restaurar.', 'aviso');
+      $('#backup-senha')?.focus();
+      return;
+    }
+    if (
+      !confirm(
+        'A restauração substitui TODOS os dados atuais pelo conteúdo do backup.\n\nDeseja continuar?'
+      )
+    ) {
+      return;
+    }
+
+    const corpo = new FormData();
+    corpo.append('arquivo', arquivo);
+    corpo.append('senha', senha);
+
+    try {
+      const dados = await requisitar('/api/backup/restaurar', { method: 'POST', body: corpo });
+      $('#resultado-backup').innerHTML = `
+        <div class="aviso aviso--liberado">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          <div class="aviso-conteudo">
+            <strong>Banco restaurado</strong>
+            ${dados.movimentos} movimento(s) · ${dados.usuarios} usuário(s).
+            ${dados.backup_anterior ? `Cópia anterior salva como ${escapar(dados.backup_anterior)}.` : ''}
+            Faça login novamente.
+          </div>
+        </div>`;
+      notificar('Restauração concluída. Entre novamente.', 'sucesso');
+      estado.usuario = null;
+      atualizarBarraSessao();
+      $('#backup-arquivo').value = '';
+      $('#backup-senha').value = '';
+      AuthUI.abrirLogin();
+      carregarPainel();
+      carregarDia(estado.diaAtual);
+    } catch (erro) {
+      notificar(erro.message, 'erro');
+      $('#backup-senha')?.select();
+    }
+  });
 
   /* ==================== Ajuste de saldo ==================== */
 
@@ -1086,6 +1481,94 @@
   $('#btn-cancelar-ajuste').addEventListener('click', fecharModalAjuste);
   $('#modal-ajuste-saldo').addEventListener('click', (e) => {
     if (e.target.id === 'modal-ajuste-saldo') fecharModalAjuste();
+  });
+
+  /* ==================== Previsão mensal ==================== */
+
+  function mesDoDia(diaIso) {
+    return String(diaIso || '').slice(0, 7);
+  }
+
+  async function abrirModalPrevisao() {
+    if (!estado.usuario) {
+      AuthUI.abrirLogin();
+      return;
+    }
+    const mes = mesDoDia(estado.diaAtual || window.CONFIG_FUNDEB.hoje);
+    $('#prev-mes').value = mes;
+    await carregarFormularioPrevisao(mes);
+    $('#modal-previsao-mensal').classList.add('aberto');
+    setTimeout(() => $('#prev-receita').focus(), 60);
+  }
+
+  function fecharModalPrevisao() {
+    $('#modal-previsao-mensal').classList.remove('aberto');
+  }
+
+  async function carregarFormularioPrevisao(anoMes) {
+    const dados = await requisitar(`/api/previsao-mensal?ano_mes=${encodeURIComponent(anoMes)}`);
+    const rec = dados.receita;
+    const desp = dados.despesa;
+    $('#prev-receita').value = rec ? fmtNumero(rec.valor) : '';
+    $('#prev-despesa').value = desp ? fmtNumero(desp.valor) : '';
+    $('#prev-receita').disabled = !dados.pode_alterar_receita;
+    $('#prev-despesa').disabled = !dados.pode_alterar_despesa;
+    $('#prev-dica-admin').hidden = !dados.eh_admin;
+
+    const status = $('#prev-status');
+    const bits = [];
+    if (rec) bits.push(`Receita: ${fmtMoeda(rec.valor)} em cada item, todos os dias`);
+    if (desp) bits.push(`Despesa: ${fmtMoeda(desp.valor)} em cada item, todos os dias`);
+    if (bits.length) {
+      status.hidden = false;
+      status.innerHTML = bits.map((t) => `<div>${t}</div>`).join('');
+    } else {
+      status.hidden = true;
+      status.innerHTML = '';
+    }
+
+    const podeSalvar = dados.pode_alterar_receita || dados.pode_alterar_despesa;
+    $('#btn-salvar-previsao').disabled = !podeSalvar;
+    return dados;
+  }
+
+  $('#btn-previsao-mensal')?.addEventListener('click', () => {
+    abrirModalPrevisao().catch((erro) => notificar(erro.message, 'erro'));
+  });
+  $('#btn-cancelar-previsao')?.addEventListener('click', fecharModalPrevisao);
+  $('#modal-previsao-mensal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'modal-previsao-mensal') fecharModalPrevisao();
+  });
+  $('#prev-mes')?.addEventListener('change', () => {
+    carregarFormularioPrevisao($('#prev-mes').value).catch((erro) => notificar(erro.message, 'erro'));
+  });
+
+  $('#btn-salvar-previsao')?.addEventListener('click', async () => {
+    try {
+      const meta = await requisitar(
+        `/api/previsao-mensal?ano_mes=${encodeURIComponent($('#prev-mes').value)}`
+      );
+      const corpo = { ano_mes: $('#prev-mes').value };
+      if (meta.pode_alterar_receita) corpo.receita = $('#prev-receita').value.trim() || '0';
+      if (meta.pode_alterar_despesa) corpo.despesa = $('#prev-despesa').value.trim() || '0';
+
+      if (!('receita' in corpo) && !('despesa' in corpo)) {
+        notificar('Nada para alterar neste mês.', 'info');
+        return;
+      }
+
+      await requisitar('/api/previsao-mensal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corpo),
+      });
+      fecharModalPrevisao();
+      notificar('Previsão mensal aplicada em todos os dias do mês.', 'sucesso');
+      await carregarDia(estado.diaAtual);
+      if (estado.dados) carregarPainel();
+    } catch (erro) {
+      notificar(erro.message, 'erro');
+    }
   });
 
   $('#btn-confirmar-ajuste').addEventListener('click', async () => {

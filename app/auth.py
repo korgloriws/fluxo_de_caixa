@@ -198,6 +198,26 @@ def criar_usuario(
     return obter_por_id(user_id)  # type: ignore[return-value]
 
 
+def atualizar_perfil(
+    user_id: int,
+    *,
+    nome: str,
+    login: str,
+    senha_atual: str,
+    senha_nova: Optional[str] = None,
+) -> dict:
+    """O próprio usuário altera nome, login e/ou senha (exige senha atual)."""
+    if not confirmar_senha(user_id, senha_atual or ""):
+        raise ValueError("Senha atual incorreta.")
+
+    return atualizar_usuario(
+        user_id,
+        nome=nome,
+        login=login,
+        senha=(senha_nova if senha_nova else None),
+    )
+
+
 def atualizar_usuario(
     user_id: int,
     *,

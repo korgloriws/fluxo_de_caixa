@@ -5,6 +5,8 @@ window.AuthUI = (() => {
 
   const $ = (seletor) => document.querySelector(seletor);
 
+  let onPerfilAtualizado = null;
+
   function notificar(mensagem, tipo = 'info') {
     const caixa = document.createElement('div');
     caixa.className = `notificacao notificacao--${tipo}`;
@@ -79,6 +81,88 @@ window.AuthUI = (() => {
     return requisitar('/api/auth/me');
   }
 
+  async function atualizarPerfil(payload) {
+    return requisitar('/api/auth/perfil', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  function escaparHtml(texto) {
+    return String(texto || '').replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
+    );
+  }
+
+  function iniciaisNome(nome) {
+    const partes = String(nome || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!partes.length) return '?';
+    if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+    return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+  }
+
+  function htmlBotaoPerfil(usuario) {
+    const nome = escaparHtml(usuario.nome || 'Usuário');
+    const iniciais = escaparHtml(iniciaisNome(usuario.nome));
+    return `
+      <span class="btn-perfil-avatar" aria-hidden="true">${iniciais}</span>
+      <span class="btn-perfil-corpo">
+        <span class="btn-perfil-rotulo">Perfil</span>
+        <span class="btn-perfil-nome">${nome}</span>
+      </span>
+      <svg class="btn-perfil-seta" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    `;
+  }
+
+  function preencherBotaoPerfil(el, usuario) {
+    if (!el || !usuario) return;
+    el.className = 'btn-perfil';
+    el.type = 'button';
+    el.disabled = false;
+    el.hidden = false;
+    el.title = 'Abrir meu perfil — alterar nome ou senha';
+    el.setAttribute('aria-label', `Perfil de ${usuario.nome}`);
+    el.innerHTML = htmlBotaoPerfil(usuario);
+  }
+
+  function marcarVisualizando(el) {
+    if (!el) return;
+    el.className = 'sessao-status';
+    el.type = 'button';
+    el.disabled = true;
+    el.hidden = false;
+    el.title = '';
+    el.removeAttribute('aria-label');
+    el.textContent = 'Visualizando';
+  }
+
+  function abrirPerfil(usuario) {
+    const modal = $('#modal-perfil');
+    if (!modal) return;
+    if (!usuario) {
+      notificar('Faça login para editar seu perfil.', 'erro');
+      return;
+    }
+    $('#perfil-nome').value = usuario.nome || '';
+    $('#perfil-login').value = usuario.login || '';
+    $('#perfil-senha-atual').value = '';
+    $('#perfil-senha-nova').value = '';
+    $('#perfil-senha-conf').value = '';
+    modal.classList.add('aberto');
+    setTimeout(() => $('#perfil-nome').focus(), 60);
+  }
+
+  function fecharPerfil() {
+    const modal = $('#modal-perfil');
+    if (modal) modal.classList.remove('aberto');
+  }
+
   function ligarModalLogin({ onSuccess } = {}) {
     const modal = $('#modal-login');
     if (!modal) return;
@@ -111,6 +195,60 @@ window.AuthUI = (() => {
     });
   }
 
+  function ligarModalPerfil({ getUsuario, onSuccess } = {}) {
+    if (onSuccess !== undefined) onPerfilAtualizado = onSuccess;
+
+    const modal = $('#modal-perfil');
+    if (!modal || modal.dataset.ligado === '1') return;
+    modal.dataset.ligado = '1';
+
+    $('#btn-cancelar-perfil')?.addEventListener('click', fecharPerfil);
+    modal.addEventListener('click', (e) => {
+      if (e.target.id === 'modal-perfil') fecharPerfil();
+    });
+
+    const salvar = async () => {
+      const senhaNova = $('#perfil-senha-nova')?.value || '';
+      const senhaConf = $('#perfil-senha-conf')?.value || '';
+      if (senhaNova || senhaConf) {
+        if (senhaNova !== senhaConf) {
+          notificar('A confirmação da nova senha não confere.', 'erro');
+          $('#perfil-senha-conf')?.select();
+          return;
+        }
+      }
+      if (!($('#perfil-senha-atual')?.value || '')) {
+        notificar('Informe a senha atual para salvar.', 'erro');
+        $('#perfil-senha-atual')?.focus();
+        return;
+      }
+
+      try {
+        const dados = await atualizarPerfil({
+          nome: $('#perfil-nome').value.trim(),
+          login: $('#perfil-login').value.trim(),
+          senha_atual: $('#perfil-senha-atual').value,
+          senha_nova: senhaNova,
+          senha_nova_conf: senhaConf,
+        });
+        fecharPerfil();
+        notificar('Perfil atualizado.', 'sucesso');
+        if (onPerfilAtualizado) onPerfilAtualizado(dados.usuario);
+      } catch (erro) {
+        notificar(erro.message, 'erro');
+        $('#perfil-senha-atual')?.select();
+      }
+    };
+
+    $('#btn-salvar-perfil')?.addEventListener('click', salvar);
+    ['#perfil-senha-atual', '#perfil-senha-nova', '#perfil-senha-conf'].forEach((sel) => {
+      $(sel)?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') salvar();
+        if (e.key === 'Escape') fecharPerfil();
+      });
+    });
+  }
+
   function renderPortalAuth(usuario) {
     const host = $('#portal-auth');
     if (!host) return;
@@ -119,9 +257,9 @@ window.AuthUI = (() => {
     const fragment = document.createDocumentFragment();
 
     if (usuario) {
-      const status = document.createElement('span');
-      status.className = 'sessao-status sessao-status--ativo';
-      status.textContent = usuario.nome;
+      const status = document.createElement('button');
+      preencherBotaoPerfil(status, usuario);
+      status.addEventListener('click', () => abrirPerfil(usuario));
       fragment.appendChild(status);
 
       if (usuario.eh_admin) {
@@ -159,6 +297,7 @@ window.AuthUI = (() => {
   }
 
   function initPortal({ next } = {}) {
+    let usuarioPortal = null;
     ligarTema();
     ligarModalLogin({
       onSuccess: (usuario) => {
@@ -166,12 +305,21 @@ window.AuthUI = (() => {
           location.href = next;
           return;
         }
+        usuarioPortal = usuario;
+        renderPortalAuth(usuario);
+      },
+    });
+    ligarModalPerfil({
+      getUsuario: () => usuarioPortal,
+      onSuccess: (usuario) => {
+        usuarioPortal = usuario;
         renderPortalAuth(usuario);
       },
     });
 
     me()
       .then((dados) => {
+        usuarioPortal = dados.usuario;
         renderPortalAuth(dados.usuario);
         const params = new URLSearchParams(location.search);
         if (params.get('login') === '1' && !dados.autenticado) abrirLogin();
@@ -189,7 +337,13 @@ window.AuthUI = (() => {
     login,
     logout,
     me,
+    atualizarPerfil,
+    abrirPerfil,
+    fecharPerfil,
+    preencherBotaoPerfil,
+    marcarVisualizando,
     ligarModalLogin,
+    ligarModalPerfil,
     initPortal,
   };
 })();

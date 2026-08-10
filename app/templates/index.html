@@ -40,7 +40,7 @@
       <div class="topo-acoes">
         <a class="btn btn-fantasma" href="/" title="Voltar ao portal">Portal</a>
         <a class="btn btn-fantasma" href="/usuarios" id="link-usuarios" hidden title="Somente administrador">Usuários</a>
-        <span class="sessao-status" id="sessao-status">Visualizando</span>
+        <button type="button" class="sessao-status" id="sessao-status" hidden disabled>Visualizando</button>
         <button class="btn btn-primario" id="btn-editar" title="Entrar para editar">Editar</button>
         <button class="btn btn-fantasma" id="btn-sair" hidden>Sair</button>
         <button class="btn btn-fantasma" id="btn-exportar-excel" title="Exportar para Excel" aria-label="Exportar para Excel">
@@ -343,6 +343,12 @@
       <div class="filtros-espaco"></div>
 
       <div class="topo-acoes">
+        <button class="btn" id="btn-previsao-mensal" title="Cadastrar previsão mensal de receita e despesa">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 19V5"/><path d="M4 19h16"/><path d="M8 17V9"/><path d="M12 17V5"/><path d="M16 17v-6"/>
+          </svg>
+          Previsão mensal
+        </button>
         <button class="btn" id="btn-ajuste-saldo" title="Lançar ajuste de saldo inicial/corte">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 3v18"/><path d="M5 12h14"/>
@@ -365,6 +371,7 @@
     </div>
 
     <div id="aviso-mes"></div>
+    <div id="aviso-previsao"></div>
     <div id="lista-ajustes-dia" class="ajustes-dia"></div>
 
     <div class="kpis" id="kpis-dia"></div>
@@ -379,7 +386,7 @@
       <div class="cartao-corpo cartao-corpo--limpo">
         <div class="tabela-envolucro">
           <table class="grade-edicao" id="grade-lancamentos">
-            <thead>
+            <thead id="cabecalho-grade">
               <tr>
                 <th style="width:24%">Categoria</th>
                 <th style="width:38%">Descrição</th>
@@ -389,9 +396,9 @@
               </tr>
             </thead>
             <tbody id="corpo-grade"></tbody>
-            <tfoot class="rodape-totais">
+            <tfoot class="rodape-totais" id="rodape-grade">
               <tr>
-                <td colspan="2">Total do dia</td>
+                <td colspan="2" id="rodape-label">Total do dia</td>
                 <td class="alinhado-direita" id="total-prevista">R$ 0,00</td>
                 <td class="alinhado-direita" id="total-realizada">R$ 0,00</td>
                 <td></td>
@@ -423,8 +430,9 @@
               <tr>
                 <th class="ordenavel" data-campo="data">Data <span class="seta">▾</span></th>
                 <th class="ordenavel col-tipo" data-campo="tipo">Tipo <span class="seta">▾</span></th>
-                <th class="ordenavel col-categoria" data-campo="categoria">Categoria <span class="seta">▾</span></th>
-                <th class="ordenavel" data-campo="descricao">Descrição <span class="seta">▾</span></th>
+                <th class="ordenavel col-categoria" data-campo="categoria">UG / Categoria <span class="seta">▾</span></th>
+                <th class="ordenavel" data-campo="nome_credor">Credor <span class="seta">▾</span></th>
+                <th class="ordenavel" data-campo="descricao">Histórico / Descrição <span class="seta">▾</span></th>
                 <th class="ordenavel alinhado-direita col-secundaria" data-campo="prevista">Prevista <span class="seta">▾</span></th>
                 <th class="ordenavel alinhado-direita" data-campo="realizada">Realizada <span class="seta">▾</span></th>
                 <th class="alinhado-direita col-secundaria">Desvio</th>
@@ -539,45 +547,169 @@
 
   <!-- ===================== ABA: IMPORTAR ===================== -->
   <section class="painel-aba" id="aba-importar" role="tabpanel">
-    <div class="cartao" style="margin-top:22px; max-width:840px">
+    <div class="importar-grade" style="margin-top:22px">
+      <!-- RECEITA -->
+      <div class="cartao importar-card importar-card--receita">
+        <div class="cartao-cabecalho">
+          <div>
+            <span class="importar-selo importar-selo--receita">Receita</span>
+            <div class="cartao-titulo">Importar receita</div>
+            <div class="cartao-subtitulo">
+              Use o <strong>extrato bancário em PDF</strong>. O sistema lê os créditos e classifica
+              por origem (ICMS, FPM, IPVA, ITR, ITCMD, IPI-EXP). Reenviar o mesmo dia substitui os valores.
+            </div>
+          </div>
+        </div>
+        <div class="cartao-corpo">
+          <div class="importar-arquivo-tipo">
+            <strong>Arquivo aceito:</strong> <code>.pdf</code>
+          </div>
+          <div class="zona-upload zona-upload--receita" id="zona-upload-receita" data-tipo="receita">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <h3>Arraste o PDF da receita aqui</h3>
+            <p>Somente extrato bancário · extensão <strong>.pdf</strong></p>
+            <input type="file" id="entrada-receita" multiple accept=".pdf,application/pdf" class="sr-only">
+          </div>
+          <div class="lista-arquivos" id="lista-arquivos-receita"></div>
+          <div class="importar-acoes">
+            <button class="btn" id="btn-limpar-receita" type="button" disabled>Limpar</button>
+            <button class="btn btn-sucesso" id="btn-processar-receita" type="button" disabled>
+              Processar receita
+            </button>
+          </div>
+          <div id="resultado-importacao-receita" class="resultado-importacao"></div>
+        </div>
+      </div>
+
+      <!-- DESPESA -->
+      <div class="cartao importar-card importar-card--despesa">
+        <div class="cartao-cabecalho">
+          <div>
+            <span class="importar-selo importar-selo--despesa">Despesa</span>
+            <div class="cartao-titulo">Importar despesa</div>
+            <div class="cartao-subtitulo">
+              Use o arquivo <strong>CSV ISO</strong> com separador <code>;</code> e as colunas
+              op, nap, processo, data, ug, nome_credor, historico, vr_pago.
+              Reenviar o mesmo dia substitui os lançamentos (não duplica).
+            </div>
+          </div>
+        </div>
+        <div class="cartao-corpo">
+          <div class="importar-arquivo-tipo">
+            <strong>Arquivo aceito:</strong> <code>.csv</code> (ISO / latin-1 · separador ;)
+          </div>
+          <div class="zona-upload zona-upload--despesa" id="zona-upload-despesa" data-tipo="despesa">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>
+            </svg>
+            <h3>Arraste o CSV da despesa aqui</h3>
+            <p>Somente planilha de pagamentos · extensão <strong>.csv</strong></p>
+            <input type="file" id="entrada-despesa" multiple accept=".csv,text/csv" class="sr-only">
+          </div>
+          <div class="lista-arquivos" id="lista-arquivos-despesa"></div>
+          <div class="importar-acoes">
+            <button class="btn" id="btn-limpar-despesa" type="button" disabled>Limpar</button>
+            <button class="btn btn-primario" id="btn-processar-despesa" type="button" disabled>
+              Processar despesa
+            </button>
+          </div>
+          <div id="resultado-importacao-despesa" class="resultado-importacao"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BACKUP -->
+    <div class="cartao importar-card importar-card--backup" id="painel-backup" hidden style="margin-top:18px; max-width:1180px">
       <div class="cartao-cabecalho">
         <div>
-          <div class="cartao-titulo">Importar extratos e planilhas</div>
+          <span class="importar-selo importar-selo--backup">Backup</span>
+          <div class="cartao-titulo">Banco de dados</div>
           <div class="cartao-subtitulo">
-            Extratos bancários em PDF são lidos automaticamente e classificados por origem
-            (ICMS, FPM, IPVA, ITR, ITCMD, IPI-EXP). Planilhas .txt ou .csv devem ter colunas de data, descrição e valor.
+            Baixe o arquivo <code>.db</code> completo para guardar uma cópia.
+            Para restaurar, envie exatamente esse mesmo arquivo — a estrutura é a usada pelo sistema.
+            Somente o administrador. A restauração substitui todos os dados atuais.
           </div>
         </div>
       </div>
       <div class="cartao-corpo">
-        <div class="zona-upload" id="zona-upload">
-          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          <h3>Arraste os arquivos aqui ou clique para escolher</h3>
-          <p>Aceita .pdf, .txt e .csv — vários arquivos de uma vez</p>
-          <input type="file" id="entrada-arquivos" multiple accept=".pdf,.txt,.csv" class="sr-only">
+        <div class="backup-grade">
+          <div class="backup-bloco">
+            <div class="importar-arquivo-tipo">
+              <strong>Baixar backup</strong><br>
+              Arquivo: <code>fluxo_backup_AAAAMMDD_HHMMSS.db</code>
+            </div>
+            <button class="btn btn-sucesso" type="button" id="btn-baixar-backup">
+              Baixar banco de dados
+            </button>
+          </div>
+          <div class="backup-bloco">
+            <div class="importar-arquivo-tipo">
+              <strong>Restaurar backup</strong><br>
+              Arquivo aceito: <code>.db</code> gerado por este sistema
+            </div>
+            <div class="campo">
+              <label for="backup-arquivo">Arquivo .db</label>
+              <input type="file" id="backup-arquivo" class="entrada" accept=".db,.sqlite,.sqlite3">
+            </div>
+            <div class="campo">
+              <label for="backup-senha">Confirme sua senha de administrador</label>
+              <input type="password" id="backup-senha" class="entrada" autocomplete="current-password">
+            </div>
+            <button class="btn btn-primario" type="button" id="btn-restaurar-backup">
+              Restaurar banco
+            </button>
+          </div>
         </div>
-
-        <div class="lista-arquivos" id="lista-arquivos"></div>
-
-        <div style="margin-top:18px; display:flex; gap:9px; justify-content:flex-end">
-          <button class="btn" id="btn-limpar-arquivos" disabled>Limpar</button>
-          <button class="btn btn-primario" id="btn-processar" disabled>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-            Processar arquivos
-          </button>
-        </div>
-
-        <div id="resultado-importacao" style="margin-top:18px"></div>
+        <div id="resultado-backup" class="resultado-importacao"></div>
       </div>
     </div>
   </section>
 
   <div style="height:28px"></div>
 </main>
+
+<!-- ===================== Modal previsão mensal ===================== -->
+<div class="modal-fundo" id="modal-previsao-mensal">
+  <div class="modal modal--scroll">
+    <div class="modal-cabecalho">Previsão mensal</div>
+    <div class="modal-corpo">
+      <div class="aviso aviso--bloqueado" style="margin:0">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <div class="aviso-conteudo">
+          <strong>Mesmo valor em todos os itens, todos os dias</strong>
+          Informe o total previsto de receita e/ou despesa. Esse valor é aplicado
+          integralmente em <em>cada item</em> do tipo, em <em>todos os dias</em> do mês
+          (sem dividir pelo número de dias). Depois de cadastrada, só o administrador pode alterar.
+        </div>
+      </div>
+
+      <div class="campo">
+        <label for="prev-mes">Mês</label>
+        <input type="month" id="prev-mes" class="entrada">
+      </div>
+      <div id="prev-status" class="prev-status" hidden></div>
+      <div class="campo">
+        <label for="prev-receita">Previsão de receita (total do mês)</label>
+        <input type="text" id="prev-receita" class="entrada" inputmode="decimal" placeholder="Ex.: 2500000,00">
+      </div>
+      <div class="campo">
+        <label for="prev-despesa">Previsão de despesa (total do mês)</label>
+        <input type="text" id="prev-despesa" class="entrada" inputmode="decimal" placeholder="Ex.: 2200000,00">
+      </div>
+      <p id="prev-dica-admin" style="margin:0;color:var(--texto-3);font-size:12.5px" hidden>
+        Como administrador, você pode alterar ou zerar (remover) a previsão já cadastrada.
+      </p>
+    </div>
+    <div class="modal-rodape modal-rodape--wrap">
+      <button class="btn" type="button" id="btn-cancelar-previsao">Cancelar</button>
+      <button class="btn btn-primario" type="button" id="btn-salvar-previsao">Aplicar no mês</button>
+    </div>
+  </div>
+</div>
 
 <!-- ===================== Modal de ajuste de saldo ===================== -->
 <div class="modal-fundo" id="modal-ajuste-saldo">
@@ -657,6 +789,8 @@
   </div>
 </div>
 
+{% include "partials/modal_perfil.html" %}
+
 <!-- ===================== Modal de login ===================== -->
 <div class="modal-fundo" id="modal-login">
   <div class="modal">
@@ -677,6 +811,29 @@
     <div class="modal-rodape">
       <button class="btn" id="btn-cancelar-login">Cancelar</button>
       <button class="btn btn-primario" id="btn-confirmar-login">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== Modal descrição / histórico completo ===================== -->
+<div class="modal-fundo" id="modal-descricao-completa">
+  <div class="modal modal--largo modal--scroll">
+    <div class="modal-cabecalho" id="modal-descricao-titulo">Histórico completo</div>
+    <div class="modal-corpo">
+      <p class="modal-descricao-ajuda" id="modal-descricao-ajuda">
+        Texto completo do lançamento para conferência.
+      </p>
+      <label class="sr-only" for="modal-descricao-texto">Descrição completa</label>
+      <textarea
+        id="modal-descricao-texto"
+        class="entrada entrada--texto-longo"
+        rows="12"
+        spellcheck="true"
+      ></textarea>
+    </div>
+    <div class="modal-rodape modal-rodape--wrap">
+      <button class="btn" type="button" id="btn-fechar-descricao">Fechar</button>
+      <button class="btn btn-primario" type="button" id="btn-aplicar-descricao" hidden>Aplicar</button>
     </div>
   </div>
 </div>
@@ -713,7 +870,7 @@
     usuario: {{ usuario | tojson }}
   };
 </script>
-<script src="/static/js/auth-ui.js?v=1"></script>
+<script src="/static/js/auth-ui.js?v=4"></script>
 <script src="/static/js/graficos.js"></script>
-<script src="/static/js/app.js?v=9"></script>
+<script src="/static/js/app.js?v=18"></script>
 {% endblock %}

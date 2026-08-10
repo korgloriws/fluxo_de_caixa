@@ -109,6 +109,8 @@
   </div>
 </main>
 
+{% include "partials/modal_perfil.html" %}
+
 <div class="modal-fundo" id="modal-login">
   <div class="modal">
     <div class="modal-cabecalho">Entrar</div>
@@ -134,7 +136,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/auth-ui.js?v=2"></script>
+<script src="/static/js/auth-ui.js?v=4"></script>
 <script>
   AuthUI.initPortal({ next: new URLSearchParams(location.search).get('next') || '' });
 </script>

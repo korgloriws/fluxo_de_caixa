@@ -62,22 +62,35 @@ def init_db() -> None:
         if "categoria" not in columns:
             conn.execute("ALTER TABLE movimentos ADD COLUMN categoria TEXT")
 
+        for coluna in ("op", "nap", "processo", "ug", "nome_credor"):
+            if coluna not in columns:
+                conn.execute(f"ALTER TABLE movimentos ADD COLUMN {coluna} TEXT")
+
         # Registros antigos gravados pelo pandas guardaram a string literal "<NA>".
         conn.execute("UPDATE movimentos SET categoria = '' WHERE categoria = '<NA>'")
 
-    from . import auth, historico
+    from . import auth, historico, previsao
 
     auth.init_usuarios()
     historico.init_historico()
+    previsao.init_previsoes()
+
+
+CAMPOS_DETALHE_DESPESA = ("op", "nap", "processo", "ug", "nome_credor")
 
 
 def _row_to_lancamento(row: sqlite3.Row) -> dict:
-    return {
+    keys = set(row.keys())
+    data = {
         "categoria": clean_text(row["categoria"]),
         "descricao": clean_text(row["descricao"]),
         "prevista": parse_number(row["valor1"]),
         "realizada": parse_number(row["valor2"]),
+        "source": clean_text(row["source"]) if "source" in keys else "",
     }
+    for campo in CAMPOS_DETALHE_DESPESA:
+        data[campo] = clean_text(row[campo]) if campo in keys else ""
+    return data
 
 
 def fetch_movimentos(
@@ -88,7 +101,8 @@ def fetch_movimentos(
     busca: Optional[str] = None,
 ) -> list[dict]:
     query = [
-        "SELECT id, data, tipo, categoria, descricao, valor1, valor2, source",
+        "SELECT id, data, tipo, categoria, descricao, valor1, valor2, source,",
+        "op, nap, processo, ug, nome_credor",
         "FROM movimentos WHERE 1=1",
     ]
     params: list = []
@@ -106,9 +120,13 @@ def fetch_movimentos(
         query.append("AND categoria = ?")
         params.append(categoria)
     if busca:
-        query.append("AND (descricao LIKE ? OR categoria LIKE ?)")
+        query.append(
+            "AND (descricao LIKE ? OR categoria LIKE ? OR COALESCE(nome_credor,'') LIKE ? "
+            "OR COALESCE(op,'') LIKE ? OR COALESCE(nap,'') LIKE ? "
+            "OR COALESCE(processo,'') LIKE ? OR COALESCE(ug,'') LIKE ?)"
+        )
         like = f"%{busca}%"
-        params.extend([like, like])
+        params.extend([like] * 7)
 
     query.append("ORDER BY data ASC, tipo ASC, id ASC")
 
@@ -126,6 +144,11 @@ def fetch_movimentos(
             "realizada": parse_number(row["valor2"]),
             "source": clean_text(row["source"]),
             "ajuste_saldo": eh_ajuste_saldo(row["source"]),
+            "op": clean_text(row["op"]) if "op" in row.keys() else "",
+            "nap": clean_text(row["nap"]) if "nap" in row.keys() else "",
+            "processo": clean_text(row["processo"]) if "processo" in row.keys() else "",
+            "ug": clean_text(row["ug"]) if "ug" in row.keys() else "",
+            "nome_credor": clean_text(row["nome_credor"]) if "nome_credor" in row.keys() else "",
         }
         for row in rows
     ]
@@ -133,7 +156,8 @@ def fetch_movimentos(
 
 def fetch_day(day: date, tipo: str, *, incluir_ajustes: bool = False) -> list[dict]:
     query = [
-        "SELECT categoria, descricao, valor1, valor2, source",
+        "SELECT categoria, descricao, valor1, valor2, source,",
+        "op, nap, processo, ug, nome_credor",
         "FROM movimentos",
         "WHERE data = ? AND tipo = ?",
     ]
@@ -157,20 +181,31 @@ def replace_day(day: date, tipo: str, rows: Iterable[dict], source: str = "manua
         raise ValueError(f"tipo inválido: {tipo}")
 
     # Nunca regravar um ajuste pela grade diária.
-    payload = [
-        (
-            day.isoformat(),
-            tipo,
-            clean_text(row.get("descricao")),
-            parse_number(row.get("prevista")),
-            parse_number(row.get("realizada")),
-            source or "manual",
-            clean_text(row.get("categoria")),
+    payload = []
+    for row in rows or []:
+        if eh_ajuste_saldo(row.get("source")):
+            continue
+        if clean_text(row.get("categoria")).upper() == CATEGORIA_AJUSTE_SALDO:
+            continue
+        origem_linha = clean_text(row.get("source")) or source or "manual"
+        if eh_ajuste_saldo(origem_linha):
+            origem_linha = source or "manual"
+        payload.append(
+            (
+                day.isoformat(),
+                tipo,
+                clean_text(row.get("descricao")),
+                parse_number(row.get("prevista")),
+                parse_number(row.get("realizada")),
+                origem_linha,
+                clean_text(row.get("categoria")),
+                clean_text(row.get("op")),
+                clean_text(row.get("nap")),
+                clean_text(row.get("processo")),
+                clean_text(row.get("ug")),
+                clean_text(row.get("nome_credor")),
+            )
         )
-        for row in rows or []
-        if not eh_ajuste_saldo(row.get("source"))
-        and clean_text(row.get("categoria")).upper() != CATEGORIA_AJUSTE_SALDO
-    ]
 
     with connect() as conn:
         conn.execute(
@@ -184,8 +219,11 @@ def replace_day(day: date, tipo: str, rows: Iterable[dict], source: str = "manua
         if payload:
             conn.executemany(
                 """
-                INSERT INTO movimentos (data, tipo, descricao, valor1, valor2, source, categoria)
-                VALUES (?,?,?,?,?,?,?)
+                INSERT INTO movimentos (
+                    data, tipo, descricao, valor1, valor2, source, categoria,
+                    op, nap, processo, ug, nome_credor
+                )
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 payload,
             )

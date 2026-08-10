@@ -12,13 +12,13 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-from fastapi import FastAPI, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import analytics, auth, exporters, historico, importers, repository
+from . import analytics, auth, backup, exporters, historico, importers, previsao, repository
 from .config import (
     APP_NAME,
     CATEGORIAS_DESPESA,
@@ -34,6 +34,7 @@ from .config import (
 )
 from .finance import (
     can_edit_day,
+    clean_text,
     format_currency,
     is_past_month,
     merge_with_template,
@@ -41,6 +42,7 @@ from .finance import (
     normalize_lancamentos,
     parse_number,
     resolve_period,
+    tem_detalhe_despesa,
     template_for,
 )
 
@@ -272,6 +274,29 @@ def api_auth_confirmar_senha(request: Request, senha: str = Form(...)):
     return {"ok": True, "usuario": usuario}
 
 
+@app.put("/api/auth/perfil")
+async def api_auth_atualizar_perfil(request: Request):
+    """Qualquer usuário autenticado altera o próprio nome, login e/ou senha."""
+    logado = exige_login(request)
+    corpo = await request.json()
+    senha_nova = (corpo.get("senha_nova") or "").strip() or None
+    senha_nova_conf = (corpo.get("senha_nova_conf") or "").strip() or None
+    if senha_nova or senha_nova_conf:
+        if senha_nova != senha_nova_conf:
+            raise HTTPException(status_code=400, detail="A confirmação da nova senha não confere.")
+    try:
+        usuario = auth.atualizar_perfil(
+            logado["id"],
+            nome=corpo.get("nome") or "",
+            login=corpo.get("login") or "",
+            senha_atual=corpo.get("senha_atual") or "",
+            senha_nova=senha_nova,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "usuario": usuario}
+
+
 # ------------------------------------------------------------------
 # API — usuários (admin)
 # ------------------------------------------------------------------
@@ -402,9 +427,25 @@ def api_obter_dia(request: Request, dia: str):
     alvo = parse_date(dia)
     liberados = meses_liberados(request)
     autenticado = esta_autenticado(request)
-
-    receitas = merge_with_template(repository.fetch_day(alvo, "receita"), template_for("receita"))
-    despesas = merge_with_template(repository.fetch_day(alvo, "despesa"), template_for("despesa"))
+    usuario = usuario_da_sessao(request)
+    eh_admin = bool(usuario and usuario.get("eh_admin"))
+    ano_mes = month_key(alvo)
+    prev_mes = previsao.listar_mes(ano_mes)
+    # Com previsão mensal ativa, a coluna Prevista fica travada para não-admin.
+    receitas_db = repository.fetch_day(alvo, "receita")
+    despesas_db = repository.fetch_day(alvo, "despesa")
+    receitas = merge_with_template(receitas_db, template_for("receita"))
+    # Despesa importada (CSV) mantém as linhas detalhadas; sem isso usa o template.
+    if tem_detalhe_despesa(despesas_db):
+        despesas = normalize_lancamentos(despesas_db)
+    else:
+        despesas = merge_with_template(despesas_db, template_for("despesa"))
+    receitas = previsao.marcar_linhas_previsao(
+        receitas, travada_prevista=bool(prev_mes["receita"]) and not eh_admin
+    )
+    despesas = previsao.marcar_linhas_previsao(
+        despesas, travada_prevista=bool(prev_mes["despesa"]) and not eh_admin
+    )
     totais = repository.totais_do_dia(alvo)
     saldo_inicial = repository.saldo_inicial_do_dia(alvo)
 
@@ -412,8 +453,10 @@ def api_obter_dia(request: Request, dia: str):
         "data": alvo.isoformat(),
         "editavel": can_edit_day(alvo, liberados, autenticado=autenticado),
         "mes_encerrado": is_past_month(alvo),
-        "mes": month_key(alvo),
+        "mes": ano_mes,
         "autenticado": autenticado,
+        "eh_admin": eh_admin,
+        "previsao_mensal": prev_mes,
         "receitas": receitas,
         "despesas": despesas,
         "ajustes_saldo": repository.listar_ajustes_saldo(alvo, alvo),
@@ -433,6 +476,7 @@ async def api_salvar_dia(request: Request, dia: str):
     corpo = await request.json()
     salvos = {}
     origem = f"manual:{usuario['login']}"
+    eh_admin = bool(usuario.get("eh_admin"))
 
     for tipo in ("receita", "despesa"):
         chave = f"{tipo}s"
@@ -440,6 +484,20 @@ async def api_salvar_dia(request: Request, dia: str):
             continue
         linhas = normalize_lancamentos(corpo.get(chave) or [])
         antes = repository.fetch_day(alvo, tipo)
+        valor_prev = None
+        registro_prev = previsao.obter(month_key(alvo), tipo)
+        if registro_prev:
+            valor_prev = float(registro_prev["valor"])
+        linhas = previsao.proteger_linhas_ao_salvar(
+            antes,
+            linhas,
+            eh_admin=eh_admin,
+            valor_previsao=valor_prev,
+        )
+        # Mantém source por linha quando existir; novas linhas usam origem manual.
+        for linha in linhas:
+            if not linha.get("source"):
+                linha["source"] = origem
         salvos[tipo] = repository.replace_day(alvo, tipo, linhas, source=origem)
         historico.registrar(
             acao="salvar_dia",
@@ -463,6 +521,72 @@ async def api_salvar_dia(request: Request, dia: str):
             "saldo_final": saldo_inicial + totais["receita_realizada"] - totais["despesa_realizada"],
         },
     }
+
+
+@app.get("/api/previsao-mensal")
+def api_obter_previsao_mensal(
+    request: Request,
+    ano: Optional[int] = None,
+    mes: Optional[int] = None,
+    ano_mes: Optional[str] = None,
+):
+    if ano_mes:
+        chave = ano_mes.strip()
+    else:
+        hoje = date.today()
+        chave = f"{(ano or hoje.year):04d}-{(mes or hoje.month):02d}"
+    usuario = usuario_da_sessao(request)
+    dados = previsao.listar_mes(chave)
+    return {
+        **dados,
+        "autenticado": usuario is not None,
+        "eh_admin": bool(usuario and usuario.get("eh_admin")),
+        "pode_alterar_receita": bool(
+            usuario and (usuario.get("eh_admin") or not dados["receita"])
+        ),
+        "pode_alterar_despesa": bool(
+            usuario and (usuario.get("eh_admin") or not dados["despesa"])
+        ),
+    }
+
+
+@app.post("/api/previsao-mensal")
+async def api_salvar_previsao_mensal(request: Request):
+    corpo = await request.json()
+    ano_mes = clean_text(corpo.get("ano_mes") or "")
+    if ano_mes and len(ano_mes) >= 7:
+        ano = int(ano_mes[:4])
+        mes = int(ano_mes[5:7])
+    else:
+        ano = int(corpo.get("ano") or 0)
+        mes = int(corpo.get("mes") or 0)
+
+    try:
+        inicio = date(ano, mes, 1)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Informe um mês válido (AAAA-MM).") from exc
+
+    usuario = exige_permissao(request, inicio)
+
+    def _campo(nome: str) -> Optional[float]:
+        if nome not in corpo:
+            return None
+        return parse_number(corpo.get(nome))
+
+    try:
+        resultado = previsao.cadastrar_ou_atualizar(
+            ano,
+            mes,
+            receita=_campo("receita"),
+            despesa=_campo("despesa"),
+            usuario=usuario,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {"ok": True, **resultado, "eh_admin": bool(usuario.get("eh_admin"))}
 
 
 # ------------------------------------------------------------------
@@ -672,6 +796,63 @@ def api_bloquear_mes(request: Request, mes: str = Form(...)):
 
 
 # ------------------------------------------------------------------
+# API — backup / restauração do banco
+# ------------------------------------------------------------------
+
+
+@app.get("/api/backup/baixar")
+def api_backup_baixar(request: Request):
+    """Baixa o SQLite completo (mesmo formato usado na restauração)."""
+    exige_admin(request)
+    try:
+        caminho = backup.gerar_backup_arquivo()
+    except backup.BackupError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return FileResponse(
+        path=str(caminho),
+        media_type="application/x-sqlite3",
+        filename=caminho.name,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/api/backup/restaurar")
+async def api_backup_restaurar(
+    request: Request,
+    arquivo: UploadFile = File(...),
+    senha: str = Form(...),
+):
+    """Restaura o sistema a partir de um .db baixado anteriormente."""
+    admin = exige_admin(request)
+    if not auth.confirmar_senha(admin["id"], senha):
+        raise HTTPException(status_code=401, detail="Senha incorreta.")
+
+    nome = (arquivo.filename or "").lower()
+    if not (nome.endswith(".db") or nome.endswith(".sqlite") or nome.endswith(".sqlite3")):
+        raise HTTPException(
+            status_code=400,
+            detail="Envie o arquivo .db gerado pelo botão de backup deste sistema.",
+        )
+
+    conteudo = await arquivo.read()
+    try:
+        info = backup.restaurar_de_bytes(conteudo)
+    except backup.BackupError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    # Sessões antigas podem apontar para usuários que não existem no backup.
+    request.session.clear()
+    return {
+        "ok": True,
+        "movimentos": info["movimentos"],
+        "usuarios": info["usuarios"],
+        "backup_anterior": info.get("backup_anterior"),
+        "mensagem": "Banco restaurado. Faça login novamente.",
+    }
+
+
+# ------------------------------------------------------------------
 # API — importação
 # ------------------------------------------------------------------
 
@@ -699,6 +880,8 @@ async def api_importar(request: Request, arquivos: list[UploadFile]):
         try:
             if nome.lower().endswith(".pdf"):
                 resultado = _importar_pdf(nome, conteudo, liberados, usuario)
+            elif nome.lower().endswith(".csv") and importers.eh_csv_despesa(conteudo):
+                resultado = _importar_despesa_csv(nome, conteudo, liberados, usuario)
             elif nome.lower().endswith(".txt") or nome.lower().endswith(".csv"):
                 resultado = _importar_texto(nome, conteudo, liberados, usuario)
             else:
@@ -757,6 +940,54 @@ def _importar_pdf(nome: str, conteudo: bytes, liberados: list[str], usuario: dic
 
     registros = importers.parse_pdf_tabular(conteudo)
     return _gravar_registros(nome, registros, liberados, usuario=usuario, origem=f"pdf-tabela:{login}")
+
+
+def _importar_despesa_csv(nome: str, conteudo: bytes, liberados: list[str], usuario: dict) -> dict:
+    """Importa CSV de despesa: substitui o dia inteiro (mesmo comportamento da receita)."""
+    login = usuario["login"]
+    por_dia = importers.parse_despesa_csv(conteudo)
+    gravados = 0
+    atualizados: list[date] = []
+    ignorados: list[dict] = []
+    origem = f"csv-despesa:{login}:{nome}"
+
+    for dia, linhas in sorted(por_dia.items()):
+        if not can_edit_day(dia, liberados, autenticado=True):
+            motivo = "mês histórico bloqueado" if is_past_month(dia) else "sem permissão"
+            ignorados.append({"data": dia.isoformat(), "motivo": motivo})
+            continue
+
+        # Preserva previsão mensal já cadastrada ao reimportar o dia.
+        registro_prev = previsao.obter(month_key(dia), "despesa")
+        valor_prev = float(registro_prev["valor"]) if registro_prev else 0.0
+        if valor_prev:
+            for linha in linhas:
+                linha["prevista"] = valor_prev
+
+        antes = repository.fetch_day(dia, "despesa")
+        repository.replace_day(dia, "despesa", linhas, source=origem)
+        historico.registrar(
+            acao="importar",
+            data_ref=dia,
+            tipo="despesa",
+            usuario=usuario,
+            origem=origem,
+            antes=antes,
+            depois=linhas,
+        )
+        gravados += 1
+        atualizados.append(dia)
+
+    return {
+        "resumo": {
+            "tipo": "despesa CSV",
+            "dias_gravados": gravados,
+            "dias_detectados": len(por_dia),
+            "linhas": sum(len(v) for v in por_dia.values()),
+        },
+        "dias": atualizados,
+        "ignorados": ignorados,
+    }
 
 
 def _importar_texto(nome: str, conteudo: bytes, liberados: list[str], usuario: dict) -> dict:

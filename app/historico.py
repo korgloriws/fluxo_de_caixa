@@ -47,14 +47,16 @@ def init_historico() -> None:
 def _serializar_linhas(linhas: list[dict]) -> str:
     limpas = []
     for row in linhas or []:
-        limpas.append(
-            {
-                "categoria": row.get("categoria") or "",
-                "descricao": row.get("descricao") or "",
-                "prevista": round(parse_number(row.get("prevista")), 2),
-                "realizada": round(parse_number(row.get("realizada")), 2),
-            }
-        )
+        item = {
+            "categoria": row.get("categoria") or "",
+            "descricao": row.get("descricao") or "",
+            "prevista": round(parse_number(row.get("prevista")), 2),
+            "realizada": round(parse_number(row.get("realizada")), 2),
+        }
+        for campo in ("op", "nap", "processo", "ug", "nome_credor"):
+            if row.get(campo):
+                item[campo] = row.get(campo) or ""
+        limpas.append(item)
     return json.dumps(limpas, ensure_ascii=False)
 
 

@@ -8,8 +8,9 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any, Iterable
 
-# Cada lançamento é um dicionário com estas quatro chaves.
+# Cada lançamento é um dicionário com estas chaves base.
 LANCAMENTO_FIELDS = ("categoria", "descricao", "prevista", "realizada")
+DETALHE_DESPESA_FIELDS = ("op", "nap", "processo", "ug", "nome_credor")
 
 
 def parse_number(value: Any) -> float:
@@ -118,24 +119,50 @@ def template_for(tipo: str) -> list[dict]:
 
 
 def normalize_lancamentos(rows: Iterable[dict]) -> list[dict]:
-    """Garante as quatro chaves esperadas, com valores numéricos já convertidos."""
+    """Normaliza lançamentos, preservando campos extras de despesa (OP, NAP, etc.)."""
     normalized = []
     for row in rows or []:
-        normalized.append(
-            {
-                "categoria": clean_text(row.get("categoria")),
-                "descricao": clean_text(row.get("descricao")),
-                "prevista": parse_number(row.get("prevista")),
-                "realizada": parse_number(row.get("realizada")),
-            }
-        )
+        item = {
+            "categoria": clean_text(row.get("categoria")),
+            "descricao": clean_text(row.get("descricao")),
+            "prevista": parse_number(row.get("prevista")),
+            "realizada": parse_number(row.get("realizada")),
+        }
+        for campo in DETALHE_DESPESA_FIELDS:
+            item[campo] = clean_text(row.get(campo))
+        if row.get("source"):
+            item["source"] = clean_text(row.get("source"))
+        normalized.append(item)
     return normalized
+
+
+def tem_detalhe_despesa(rows: Iterable[dict]) -> bool:
+    """Indica se as linhas carregam o layout de despesa importada (CSV)."""
+    for row in rows or []:
+        if any(clean_text(row.get(campo)) for campo in DETALHE_DESPESA_FIELDS):
+            return True
+    return False
+
+
+def linha_despesa_vazia() -> dict:
+    return {
+        "categoria": "DESPESA",
+        "descricao": "",
+        "prevista": 0.0,
+        "realizada": 0.0,
+        "op": "",
+        "nap": "",
+        "processo": "",
+        "ug": "",
+        "nome_credor": "",
+    }
 
 
 def merge_with_template(rows: Iterable[dict], template: list[dict]) -> list[dict]:
     """Exibe sempre as linhas do template, na ordem, preservando linhas extras do usuário.
 
     A chave de correspondência é (categoria, descrição), igual ao app original.
+    Campos de detalhe de despesa são preservados quando existem.
     """
     existing = normalize_lancamentos(rows)
     by_key: dict[tuple[str, str], dict] = {}
@@ -157,7 +184,13 @@ def merge_with_template(rows: Iterable[dict], template: list[dict]) -> list[dict
     for tpl_row in template:
         key = (tpl_row["categoria"].upper(), tpl_row["descricao"].upper())
         used.add(key)
-        merged.append(dict(by_key[key]) if key in by_key else dict(tpl_row))
+        if key in by_key:
+            merged.append(dict(by_key[key]))
+        else:
+            item = dict(tpl_row)
+            for campo in DETALHE_DESPESA_FIELDS:
+                item.setdefault(campo, "")
+            merged.append(item)
 
     for key in order:
         if key not in used:

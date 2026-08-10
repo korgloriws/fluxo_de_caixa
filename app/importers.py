@@ -270,3 +270,154 @@ def _dedupe(labels: list[str]) -> list[str]:
             contagem[base] = 0
             saida.append(base)
     return saida
+
+
+# ------------------------------------------------------------------
+# CSV de despesa (ISO-8859-1, separador ;)
+# ------------------------------------------------------------------
+
+
+def _normalizar_cabecalho(nome: str) -> str:
+    texto = clean_text(nome).lower()
+    # Remove acentos simples sem depender de unicodedata complexo.
+    for origem, destino in (
+        ("á", "a"), ("à", "a"), ("ã", "a"), ("â", "a"),
+        ("é", "e"), ("ê", "e"),
+        ("í", "i"),
+        ("ó", "o"), ("ô", "o"), ("õ", "o"),
+        ("ú", "u"),
+        ("ç", "c"),
+    ):
+        texto = texto.replace(origem, destino)
+    return texto.replace(" ", "_")
+
+
+def eh_csv_despesa(file_bytes: bytes) -> bool:
+    """Detecta CSV de despesa pelas colunas típicas (vr_pago, nome_credor, etc.)."""
+    for encoding in ("latin-1", "cp1252", "iso-8859-1", "utf-8"):
+        try:
+            texto = file_bytes.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        texto = file_bytes.decode("latin-1", errors="ignore")
+
+    primeira = ""
+    for linha in texto.splitlines():
+        if linha.strip():
+            primeira = linha
+            break
+    if not primeira:
+        return False
+
+    cols = {_normalizar_cabecalho(c) for c in primeira.split(";")}
+    obrigatorias = {"data", "vr_pago"}
+    fortes = {"nome_credor", "historico", "op", "nap", "processo", "ug"}
+    return obrigatorias.issubset(cols) and len(cols & fortes) >= 2
+
+
+def parse_despesa_csv(file_bytes: bytes) -> dict[date, list[dict]]:
+    """Lê CSV ISO (;), agrupa por data e soma linhas idênticas no mesmo dia.
+
+    Colunas: op, nap, processo, data, ug, nome_credor, historico, vr_pago.
+    Retorna {data: [lançamentos de despesa]}.
+    """
+    import pandas as pd
+
+    texto = None
+    encoding_usado = "latin-1"
+    for encoding in ("latin-1", "cp1252", "iso-8859-1", "utf-8-sig", "utf-8"):
+        try:
+            texto = file_bytes.decode(encoding)
+            encoding_usado = encoding
+            break
+        except UnicodeDecodeError:
+            continue
+    if texto is None:
+        texto = file_bytes.decode("latin-1", errors="ignore")
+
+    try:
+        df = pd.read_csv(
+            io.StringIO(texto),
+            sep=";",
+            engine="python",
+            dtype=str,
+            keep_default_na=False,
+        )
+    except Exception as exc:
+        raise ImportError_(
+            f"Não foi possível ler o CSV de despesa ({encoding_usado}): {exc}"
+        ) from exc
+
+    if df.empty:
+        return {}
+
+    colunas = {_normalizar_cabecalho(str(c)): c for c in df.columns}
+    mapa = {
+        "op": colunas.get("op"),
+        "nap": colunas.get("nap"),
+        "processo": colunas.get("processo"),
+        "data": colunas.get("data"),
+        "ug": colunas.get("ug"),
+        "nome_credor": colunas.get("nome_credor") or colunas.get("credor"),
+        "historico": colunas.get("historico") or colunas.get("descricao"),
+        "vr_pago": colunas.get("vr_pago")
+        or colunas.get("valor_pago")
+        or colunas.get("valor"),
+    }
+    if not mapa["data"] or not mapa["vr_pago"]:
+        raise ImportError_(
+            "CSV de despesa precisa das colunas 'data' e 'vr_pago' (separador ;)."
+        )
+
+    # (data, op, nap, processo, ug, nome_credor, historico) -> soma vr_pago
+    agregados: dict[tuple, float] = {}
+    ordem: list[tuple] = []
+
+    for _, row in df.iterrows():
+        bruto_data = clean_text(row[mapa["data"]])
+        if not bruto_data:
+            continue
+        parsed = pd.to_datetime(bruto_data, errors="coerce", dayfirst=True)
+        if pd.isna(parsed):
+            continue
+        dia = parsed.date()
+
+        op = clean_text(row[mapa["op"]]) if mapa["op"] else ""
+        nap = clean_text(row[mapa["nap"]]) if mapa["nap"] else ""
+        processo = clean_text(row[mapa["processo"]]) if mapa["processo"] else ""
+        ug = clean_text(row[mapa["ug"]]) if mapa["ug"] else ""
+        nome_credor = clean_text(row[mapa["nome_credor"]]) if mapa["nome_credor"] else ""
+        historico = clean_text(row[mapa["historico"]]) if mapa["historico"] else ""
+        valor = parse_number(row[mapa["vr_pago"]])
+
+        if valor == 0 and not any((op, nap, processo, ug, nome_credor, historico)):
+            continue
+        if eh_linha_de_fechamento(historico) or eh_linha_de_fechamento(nome_credor):
+            continue
+
+        chave = (dia, op, nap, processo, ug, nome_credor, historico)
+        if chave not in agregados:
+            agregados[chave] = 0.0
+            ordem.append(chave)
+        agregados[chave] += valor
+
+    por_dia: dict[date, list[dict]] = {}
+    for chave in ordem:
+        dia, op, nap, processo, ug, nome_credor, historico = chave
+        por_dia.setdefault(dia, []).append(
+            {
+                "categoria": ug or "DESPESA",
+                "descricao": historico,
+                "prevista": 0.0,
+                "realizada": agregados[chave],
+                "op": op,
+                "nap": nap,
+                "processo": processo,
+                "ug": ug,
+                "nome_credor": nome_credor,
+            }
+        )
+
+    return por_dia

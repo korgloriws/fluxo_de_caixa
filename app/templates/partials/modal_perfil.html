@@ -1,0 +1,39 @@
+<!-- Modal: meu perfil (próprio usuário) -->
+<div class="modal-fundo" id="modal-perfil">
+  <div class="modal">
+    <div class="modal-cabecalho">Meu perfil</div>
+    <div class="modal-corpo">
+      <p style="margin:0; color:var(--texto-2)">
+        Altere seu nome, login ou senha. A senha atual é obrigatória para salvar.
+        {% if usuario is defined and usuario and usuario.eh_admin %}
+        Como administrador, você também gerencia os demais em
+        <a href="/usuarios">Usuários</a>.
+        {% endif %}
+      </p>
+      <div class="campo">
+        <label for="perfil-nome">Nome</label>
+        <input type="text" id="perfil-nome" class="entrada" autocomplete="name">
+      </div>
+      <div class="campo">
+        <label for="perfil-login">Login</label>
+        <input type="text" id="perfil-login" class="entrada" autocomplete="username">
+      </div>
+      <div class="campo">
+        <label for="perfil-senha-atual">Senha atual</label>
+        <input type="password" id="perfil-senha-atual" class="entrada" autocomplete="current-password">
+      </div>
+      <div class="campo">
+        <label for="perfil-senha-nova">Nova senha <span style="color:var(--texto-3); font-weight:400">(opcional, mín. 4)</span></label>
+        <input type="password" id="perfil-senha-nova" class="entrada" autocomplete="new-password">
+      </div>
+      <div class="campo">
+        <label for="perfil-senha-conf">Confirmar nova senha</label>
+        <input type="password" id="perfil-senha-conf" class="entrada" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="modal-rodape">
+      <button class="btn" type="button" id="btn-cancelar-perfil">Cancelar</button>
+      <button class="btn btn-primario" type="button" id="btn-salvar-perfil">Salvar</button>
+    </div>
+  </div>
+</div>

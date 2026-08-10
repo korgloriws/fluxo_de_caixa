@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 APP_NAME = "FUNDEB"
 APP_SHORT_NAME = "FUNDEB"
@@ -34,9 +35,17 @@ CATEGORIAS_DESPESA = [
 CATEGORIA_AJUSTE_SALDO = "AJUSTE DE SALDO"
 SOURCE_AJUSTE_SALDO = "ajuste-saldo"
 
+CATEGORIA_PREVISAO_MENSAL = "PREVISÃO MENSAL"
+DESCRICAO_PREVISAO_MENSAL = "Distribuição automática do mês"
+SOURCE_PREVISAO_MENSAL = "previsao-mensal"
+
 
 def get_base_dir() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _running_in_docker() -> bool:
+    return Path("/.dockerenv").exists()
 
 
 def _resolve_dir(env_names: tuple[str, ...], fallback: str) -> str:
@@ -49,7 +58,10 @@ def _resolve_dir(env_names: tuple[str, ...], fallback: str) -> str:
 
     if candidate:
         path = os.path.expanduser(str(candidate)).strip()
-        if not os.path.isabs(path):
+        # Evita .env de Docker apontar para /app/... quando roda no Windows/macOS.
+        if path.startswith("/app/") and not _running_in_docker():
+            path = os.path.join(get_base_dir(), fallback)
+        elif not os.path.isabs(path):
             path = os.path.abspath(os.path.join(get_base_dir(), path))
     else:
         path = os.path.join(get_base_dir(), fallback)

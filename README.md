@@ -20,6 +20,7 @@ Opções úteis:
 python run.py --port 9000      # outra porta
 python run.py --host 0.0.0.0   # liberar o acesso pela rede local
 python run.py --reload         # recarrega ao salvar o código (desenvolvimento)
+python run.py --stop           # encerra o que estiver na porta (útil no Windows)
 ```
 
 ## Deploy com Docker (VPS)

@@ -6,6 +6,13 @@ __pycache__/
 venv/
 .env
 
+# Certificados / chaves BB (mTLS) — nunca versionar
+certs/
+*.pem
+*.pfx
+*.p12
+*.key
+
 # Dados persistentes da aplicação (não versionar)
 data/*
 !data/.gitkeep

@@ -852,6 +852,56 @@ table.grade-edicao tbody tr:hover td { background: var(--superficie-2); }
 
 .celula-entrada.alterada { background: rgba(217, 119, 6, 0.1); }
 
+.celula-entrada--descricao {
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.celula-entrada--descricao:read-only {
+  color: var(--texto);
+  cursor: pointer;
+}
+
+.celula-entrada--botao {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--texto);
+}
+
+.celula-entrada--botao:hover,
+.celula-entrada--descricao:hover {
+  background: var(--superficie-3);
+}
+
+.modal-descricao-ajuda {
+  margin: 0 0 12px;
+  color: var(--texto-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.entrada--texto-longo {
+  width: 100%;
+  min-height: 240px;
+  resize: vertical;
+  font-family: ui-monospace, "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
+  font-size: 13.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.entrada--somente-leitura {
+  background: var(--superficie-2);
+  cursor: default;
+  color: var(--texto);
+}
+
 td.acoes-linha { width: 44px; text-align: center; }
 
 .btn-remover {
@@ -913,6 +963,28 @@ tfoot.rodape-totais td {
   color: var(--realce);
 }
 
+.prev-status {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--superficie-3);
+  border: 1px solid var(--borda);
+  color: var(--texto-2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.linha-travada {
+  background: color-mix(in srgb, var(--realce-suave) 55%, transparent);
+}
+
+.linha-travada .celula-entrada:disabled {
+  opacity: 0.85;
+  cursor: not-allowed;
+  background: var(--superficie-3);
+}
+
 /* ==========================================================================
    Zona de upload
    ========================================================================== */
@@ -951,6 +1023,122 @@ tfoot.rodape-totais td {
 }
 
 .arquivo-item .nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.importar-grade {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  max-width: 1180px;
+}
+
+.importar-card .cartao-cabecalho {
+  align-items: flex-start;
+}
+
+.importar-selo {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.importar-selo--receita {
+  color: var(--verde);
+  background: var(--verde-suave);
+  border: 1px solid rgba(22, 163, 74, 0.28);
+}
+
+.importar-selo--despesa {
+  color: var(--vermelho);
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.28);
+}
+
+.importar-card--receita {
+  border-color: rgba(22, 163, 74, 0.22);
+  box-shadow: 0 0 0 1px rgba(22, 163, 74, 0.06);
+}
+
+.importar-card--despesa {
+  border-color: rgba(220, 38, 38, 0.22);
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.06);
+}
+
+.importar-arquivo-tipo {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--superficie-3);
+  border: 1px solid var(--borda);
+  font-size: 13px;
+  color: var(--texto-2);
+}
+
+.importar-arquivo-tipo code {
+  font-weight: 700;
+  color: var(--texto);
+}
+
+.zona-upload--receita:hover,
+.zona-upload--receita.arrastando {
+  border-color: var(--verde);
+  background: var(--verde-suave);
+}
+
+.zona-upload--despesa:hover,
+.zona-upload--despesa.arrastando {
+  border-color: var(--vermelho);
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.importar-acoes {
+  margin-top: 16px;
+  display: flex;
+  gap: 9px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.resultado-importacao {
+  margin-top: 16px;
+}
+
+.importar-selo--backup {
+  color: var(--texto-2);
+  background: var(--superficie-3);
+  border: 1px solid var(--borda);
+}
+
+.importar-card--backup {
+  border-color: var(--borda-forte);
+}
+
+.backup-grade {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.backup-bloco {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+@media (max-width: 900px) {
+  .importar-grade {
+    grid-template-columns: 1fr;
+  }
+
+  .backup-grade {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* ==========================================================================
    Estados vazios e carregamento
@@ -1342,10 +1530,12 @@ tfoot.rodape-totais td {
     gap: 8px;
   }
 
-  .topo-acoes .sessao-status {
+  .topo-acoes .sessao-status,
+  .topo-acoes .btn-perfil {
     order: -1;
     flex: 1 1 100%;
     justify-content: center;
+    max-width: none;
   }
 
   #tabela-historico th:nth-child(5),
@@ -1454,12 +1644,100 @@ tfoot.rodape-totais td {
   background: var(--superficie-3);
   border: 1px solid var(--borda);
   white-space: nowrap;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: default;
 }
 
-.sessao-status--ativo {
-  color: var(--primaria-texto);
-  background: var(--realce-suave);
+button.sessao-status:disabled {
+  opacity: 1;
+}
+
+/* Botão de perfil (nome em destaque, abre a modal) */
+.btn-perfil {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 10px 5px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--borda);
+  background: var(--superficie);
+  color: var(--texto);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  max-width: min(240px, 52vw);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.btn-perfil:hover {
   border-color: var(--realce-anel);
+  background: var(--realce-suave);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--realce-anel) 28%, transparent);
+}
+
+.btn-perfil:active {
+  transform: translateY(1px);
+}
+
+.btn-perfil-avatar {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #241a02;
+  background: linear-gradient(145deg, #fde047 0%, #eab308 55%, #ca8a04 100%);
+  border: 1px solid rgba(36, 26, 2, 0.12);
+}
+
+.btn-perfil-corpo {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+  text-align: left;
+  line-height: 1.15;
+}
+
+.btn-perfil-rotulo {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--texto-3);
+}
+
+.btn-perfil-nome {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--texto);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-perfil-seta {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  color: var(--texto-3);
+  margin-right: 2px;
+}
+
+.btn-perfil:hover .btn-perfil-seta {
+  color: var(--texto-2);
+}
+
+[data-tema="escuro"] .btn-perfil-avatar {
+  color: #1c1402;
 }
 
 [hidden] {
@@ -2035,7 +2313,8 @@ tfoot.rodape-totais td {
   }
 
   .portal-acoes .btn,
-  .portal-acoes .sessao-status {
+  .portal-acoes .sessao-status,
+  .portal-acoes .btn-perfil {
     flex: 1 1 calc(50% - 4px);
     justify-content: center;
     min-height: 42px;
@@ -2063,7 +2342,8 @@ tfoot.rodape-totais td {
     padding: 20px;
   }
 
-  .sessao-status {
+  .sessao-status,
+  .btn-perfil {
     max-width: none;
     justify-content: center;
   }
@@ -2075,7 +2355,8 @@ tfoot.rodape-totais td {
   }
 
   .portal-acoes .btn,
-  .portal-acoes .sessao-status {
+  .portal-acoes .sessao-status,
+  .portal-acoes .btn-perfil {
     flex: 1 1 100%;
   }
 }

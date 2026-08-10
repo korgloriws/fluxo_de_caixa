@@ -153,4 +153,22 @@
       location.href = '/?login=1&next=/usuarios';
     }
   });
+
+  AuthUI.ligarTema();
+  AuthUI.ligarModalPerfil({
+    getUsuario: () => window.USUARIO_LOGADO || null,
+    onSuccess: (usuario) => {
+      window.USUARIO_LOGADO = usuario;
+      AuthUI.preencherBotaoPerfil($('#btn-meu-perfil'), usuario);
+    },
+  });
+
+  const btnMeuPerfil = $('#btn-meu-perfil');
+  if (btnMeuPerfil && window.USUARIO_LOGADO) {
+    AuthUI.preencherBotaoPerfil(btnMeuPerfil, window.USUARIO_LOGADO);
+  }
+
+  btnMeuPerfil?.addEventListener('click', () => {
+    AuthUI.abrirPerfil(window.USUARIO_LOGADO);
+  });
 })();

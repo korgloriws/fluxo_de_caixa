@@ -40,6 +40,16 @@
       <div class="topo-acoes">
         <a class="btn btn-fantasma" href="/">Portal</a>
         <a class="btn btn-fantasma" href="/fluxo">{{ module_name }}</a>
+        <button type="button" class="btn-perfil" id="btn-meu-perfil" title="Abrir meu perfil" aria-label="Perfil de {{ usuario.nome }}">
+          <span class="btn-perfil-avatar" aria-hidden="true">{{ usuario.nome[:1] }}</span>
+          <span class="btn-perfil-corpo">
+            <span class="btn-perfil-rotulo">Perfil</span>
+            <span class="btn-perfil-nome">{{ usuario.nome }}</span>
+          </span>
+          <svg class="btn-perfil-seta" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </button>
         <button class="btn btn-fantasma btn-icone" id="btn-tema" title="Alternar tema" aria-label="Alternar tema">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icone-claro">
             <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>
@@ -111,8 +121,14 @@
     </div>
   </div>
 </div>
+
+{% include "partials/modal_perfil.html" %}
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/usuarios.js?v=1"></script>
+<script>
+  window.USUARIO_LOGADO = {{ usuario | tojson }};
+</script>
+<script src="/static/js/auth-ui.js?v=4"></script>
+<script src="/static/js/usuarios.js?v=3"></script>
 {% endblock %}
