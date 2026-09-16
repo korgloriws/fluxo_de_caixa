@@ -181,9 +181,9 @@ def contexto_fluxo(request: Request) -> dict:
 @app.get("/", response_class=HTMLResponse)
 def pagina_modulos(request: Request):
     return templates.TemplateResponse(
+        request,
         "modulos.html",
         {
-            "request": request,
             "app_name": PORTAL_NAME,
             "portal_name": PORTAL_NAME,
             "module_name": MODULE_NAME,
@@ -204,15 +204,15 @@ def pagina_modulos(request: Request):
 
 @app.get("/fluxo", response_class=HTMLResponse)
 def pagina_fluxo(request: Request):
-    return templates.TemplateResponse("index.html", contexto_fluxo(request))
+    return templates.TemplateResponse(request, "index.html", contexto_fluxo(request))
 
 
 @app.get("/extrato-bb", response_class=HTMLResponse)
 def pagina_extrato_bb(request: Request):
     return templates.TemplateResponse(
+        request,
         "extrato_bb.html",
         {
-            "request": request,
             "app_name": MODULE_EXTRATO_BB_NAME,
             "portal_name": PORTAL_NAME,
             "module_name": MODULE_EXTRATO_BB_NAME,
@@ -225,9 +225,9 @@ def pagina_extrato_bb(request: Request):
 @app.get("/sgp", response_class=HTMLResponse)
 def pagina_sgp(request: Request):
     return templates.TemplateResponse(
+        request,
         "sgp.html",
         {
-            "request": request,
             "app_name": MODULE_SGP_NAME,
             "portal_name": PORTAL_NAME,
             "module_name": MODULE_SGP_NAME,
@@ -243,9 +243,9 @@ def pagina_tesouro(request: Request):
         # Quando o módulo estiver pronto, esta rota passa a renderizar a tela real.
         return RedirectResponse(url="/", status_code=302)
     return templates.TemplateResponse(
+        request,
         "em_construcao.html",
         {
-            "request": request,
             "app_name": MODULE_TESOURO_NAME,
             "portal_name": PORTAL_NAME,
             "module_name": MODULE_TESOURO_NAME,
@@ -265,9 +265,9 @@ def pagina_usuarios(request: Request):
         return RedirectResponse(url="/", status_code=302)
 
     return templates.TemplateResponse(
+        request,
         "usuarios.html",
         {
-            "request": request,
             "app_name": PORTAL_NAME,
             "portal_name": PORTAL_NAME,
             "module_name": MODULE_NAME,
