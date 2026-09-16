@@ -8,6 +8,7 @@ venv/
 
 # Certificados / chaves BB (mTLS) — nunca versionar
 certs/
+app/certificado/
 *.pem
 *.pfx
 *.p12

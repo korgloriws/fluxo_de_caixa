@@ -18,13 +18,19 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import analytics, auth, backup, exporters, historico, importers, previsao, repository
+from . import analytics, auth, backup, bb_extrato, exporters, historico, importers, previsao, repository, sgp
 from .config import (
     APP_NAME,
     CATEGORIAS_DESPESA,
     CATEGORIAS_RECEITA,
     MODULE_DESCRICAO,
+    MODULE_EXTRATO_BB_DESCRICAO,
+    MODULE_EXTRATO_BB_NAME,
+    MODULE_EXTRATO_BB_PRONTO,
     MODULE_NAME,
+    MODULE_SGP_DESCRICAO,
+    MODULE_SGP_NAME,
+    MODULE_SGP_PRONTO,
     MODULE_TESOURO_DESCRICAO,
     MODULE_TESOURO_NAME,
     MODULE_TESOURO_PRONTO,
@@ -185,6 +191,12 @@ def pagina_modulos(request: Request):
             "module_tesouro_name": MODULE_TESOURO_NAME,
             "module_tesouro_descricao": MODULE_TESOURO_DESCRICAO,
             "module_tesouro_pronto": MODULE_TESOURO_PRONTO,
+            "module_extrato_bb_name": MODULE_EXTRATO_BB_NAME,
+            "module_extrato_bb_descricao": MODULE_EXTRATO_BB_DESCRICAO,
+            "module_extrato_bb_pronto": MODULE_EXTRATO_BB_PRONTO,
+            "module_sgp_name": MODULE_SGP_NAME,
+            "module_sgp_descricao": MODULE_SGP_DESCRICAO,
+            "module_sgp_pronto": MODULE_SGP_PRONTO,
             "usuario": usuario_da_sessao(request),
         },
     )
@@ -193,6 +205,36 @@ def pagina_modulos(request: Request):
 @app.get("/fluxo", response_class=HTMLResponse)
 def pagina_fluxo(request: Request):
     return templates.TemplateResponse("index.html", contexto_fluxo(request))
+
+
+@app.get("/extrato-bb", response_class=HTMLResponse)
+def pagina_extrato_bb(request: Request):
+    return templates.TemplateResponse(
+        "extrato_bb.html",
+        {
+            "request": request,
+            "app_name": MODULE_EXTRATO_BB_NAME,
+            "portal_name": PORTAL_NAME,
+            "module_name": MODULE_EXTRATO_BB_NAME,
+            "module_descricao": MODULE_EXTRATO_BB_DESCRICAO,
+            "usuario": usuario_da_sessao(request),
+        },
+    )
+
+
+@app.get("/sgp", response_class=HTMLResponse)
+def pagina_sgp(request: Request):
+    return templates.TemplateResponse(
+        "sgp.html",
+        {
+            "request": request,
+            "app_name": MODULE_SGP_NAME,
+            "portal_name": PORTAL_NAME,
+            "module_name": MODULE_SGP_NAME,
+            "module_descricao": MODULE_SGP_DESCRICAO,
+            "usuario": usuario_da_sessao(request),
+        },
+    )
 
 
 @app.get("/tesouro", response_class=HTMLResponse)
@@ -850,6 +892,157 @@ async def api_backup_restaurar(
         "backup_anterior": info.get("backup_anterior"),
         "mensagem": "Banco restaurado. Faça login novamente.",
     }
+
+
+# ------------------------------------------------------------------
+# API — Extrato Banco do Brasil (consulta visual)
+# ------------------------------------------------------------------
+
+
+@app.get("/api/bb-extrato")
+def api_bb_extrato(
+    inicio: Optional[str] = Query(None),
+    fim: Optional[str] = Query(None),
+    sinal: Optional[str] = Query(None),
+    historico: Optional[str] = Query(None),
+    busca: Optional[str] = Query(None),
+    incluir_saldos: bool = Query(False),
+    pagina: int = Query(1, ge=1),
+    por_pagina: int = Query(50, ge=10, le=200),
+):
+    start = parse_date(inicio) if inicio else None
+    end = parse_date(fim) if fim else None
+    if start and end and start > end:
+        start, end = end, start
+    return bb_extrato.consultar(
+        inicio=start,
+        fim=end,
+        sinal=sinal,
+        historico=historico,
+        busca=busca,
+        incluir_saldos=incluir_saldos,
+        pagina=pagina,
+        por_pagina=por_pagina,
+    )
+
+
+@app.get("/api/bb-extrato/glossario")
+def api_bb_extrato_glossario():
+    return {"glossario": bb_extrato.GLOSSARIO, "modo": bb_extrato.MODO_ATUAL}
+
+
+@app.get("/api/bb-extrato/{item_id}")
+def api_bb_extrato_detalhe(item_id: str):
+    item = bb_extrato.obter_detalhe(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Lançamento não encontrado.")
+    return item
+
+
+# ------------------------------------------------------------------
+# API — SGP (sistema financeiro da prefeitura / SOAP)
+# ------------------------------------------------------------------
+
+
+@app.get("/api/sgp/status")
+def api_sgp_status():
+    return sgp.status()
+
+
+@app.get("/api/sgp/meta")
+def api_sgp_meta():
+    return sgp.meta_ui()
+
+
+@app.get("/api/sgp/grupos-ug")
+def api_sgp_grupos_ug(ano: Optional[int] = Query(None)):
+    try:
+        return {"ano": ano or date.today().year, "grupos": sgp.listar_grupos_ug(ano or date.today().year)}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao listar grupos UG: {exc}") from exc
+
+
+@app.get("/api/sgp/consulta/{tipo}")
+def api_sgp_consulta(
+    tipo: str,
+    ano: Optional[int] = Query(None),
+    data_inicial: Optional[str] = Query(None),
+    data_final: Optional[str] = Query(None),
+    registro_inicial: int = Query(0, ge=0),
+    quantidade: int = Query(100, ge=1, le=500),
+    filtro_opcional: str = Query(""),
+    cod_grupo_ug: int = Query(86),
+    fonte_recurso: str = Query(""),
+    busca: Optional[str] = Query(None),
+    ug: Optional[str] = Query(None),
+    fonte: Optional[str] = Query(None),
+    credor: Optional[str] = Query(None),
+):
+    if tipo not in sgp.CONSULTAS:
+        raise HTTPException(status_code=404, detail="Tipo de consulta inválido. Use nap ou empenho.")
+    try:
+        from .sgp_client import SgpError
+
+        return sgp.consultar(
+            tipo,
+            ano=ano,
+            data_inicial=data_inicial,
+            data_final=data_final,
+            registro_inicial=registro_inicial,
+            quantidade=quantidade,
+            filtro_opcional=filtro_opcional,
+            cod_grupo_ug=cod_grupo_ug,
+            fonte_recurso=fonte_recurso,
+            busca=busca,
+            ug=ug,
+            fonte=fonte,
+            credor=credor,
+        )
+    except SgpError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha SGP: {exc}") from exc
+
+
+@app.get("/api/sgp/operacoes")
+def api_sgp_operacoes(cruzamento: bool = Query(False)):
+    return sgp.listar_operacoes(apenas_cruzamento=cruzamento)
+
+
+@app.get("/api/sgp/operacoes/{nome}")
+def api_sgp_operacao_detalhe(nome: str):
+    detalhe = sgp.detalhe_operacao(nome)
+    if not detalhe:
+        raise HTTPException(status_code=404, detail=f"Operação '{nome}' não encontrada.")
+    return detalhe
+
+
+@app.post("/api/sgp/invocar")
+async def api_sgp_invocar(request: Request):
+    """Invoca uma operação SOAP. Útil para explorar; o cruzamento usará wrappers depois."""
+    exige_login(request)
+    payload = await request.json()
+    nome = (payload.get("operation") or payload.get("operacao") or "").strip()
+    params = payload.get("params") or {}
+    if not nome:
+        raise HTTPException(status_code=400, detail="Informe o nome da operação.")
+    if not isinstance(params, dict):
+        raise HTTPException(status_code=400, detail="params deve ser um objeto.")
+
+    try:
+        from .sgp_client import SgpError
+
+        return sgp.invocar_operacao(
+            nome,
+            params,
+            username=payload.get("username"),
+            password=payload.get("password"),
+            timeout=int(payload.get("timeout") or 60),
+        )
+    except SgpError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha SGP: {exc}") from exc
 
 
 # ------------------------------------------------------------------

@@ -15,6 +15,18 @@ MODULE_TESOURO_NAME = "Tesouro"
 MODULE_TESOURO_DESCRICAO = "Controle e acompanhamento das contas do Tesouro."
 MODULE_TESOURO_PRONTO = False
 
+MODULE_EXTRATO_BB_NAME = "Extrato BB"
+MODULE_EXTRATO_BB_DESCRICAO = (
+    "Consulta visual da API Extratos do Banco do Brasil — créditos, débitos e histórico."
+)
+MODULE_EXTRATO_BB_PRONTO = True
+
+MODULE_SGP_NAME = "SGP Pagamentos"
+MODULE_SGP_DESCRICAO = (
+    "NAP e pagamentos por empenho do sistema financeiro (SOAP) — para cruzar com o Extrato BB."
+)
+MODULE_SGP_PRONTO = True
+
 # Seed do admin e sessão: somente via variáveis de ambiente (.env).
 # Nenhuma senha ou segredo fica embutido no código.
 DEFAULT_ADMIN_LOGIN = "admin"

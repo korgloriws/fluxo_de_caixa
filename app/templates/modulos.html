@@ -76,6 +76,38 @@
         <span class="modulo-cta">Abrir módulo →</span>
       </a>
 
+      {% if module_extrato_bb_pronto %}
+      <a class="modulo-card modulo-card--ativo" href="/extrato-bb">
+        <div class="modulo-icone" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h2"/><path d="M10 15h4"/>
+          </svg>
+        </div>
+        <div class="modulo-texto">
+          <span class="modulo-tag">Módulo</span>
+          <h2>{{ module_extrato_bb_name }}</h2>
+          <p>{{ module_extrato_bb_descricao }}</p>
+        </div>
+        <span class="modulo-cta">Abrir módulo →</span>
+      </a>
+      {% endif %}
+
+      {% if module_sgp_pronto %}
+      <a class="modulo-card modulo-card--ativo" href="/sgp">
+        <div class="modulo-icone" aria-hidden="true">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>
+          </svg>
+        </div>
+        <div class="modulo-texto">
+          <span class="modulo-tag">Módulo</span>
+          <h2>{{ module_sgp_name }}</h2>
+          <p>{{ module_sgp_descricao }}</p>
+        </div>
+        <span class="modulo-cta">Abrir módulo →</span>
+      </a>
+      {% endif %}
+
       {% if module_tesouro_pronto %}
       <a class="modulo-card" href="/tesouro">
         <div class="modulo-icone" aria-hidden="true">

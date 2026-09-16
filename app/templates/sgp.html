@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block titulo %}{{ module_name }} — {{ portal_name }}{% endblock %}
+
+{% block conteudo %}
+<header class="topo">
+  <div class="container">
+    <div class="topo-linha">
+      <div class="marca">
+        <svg class="marca-icone" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="42" height="42" role="img" aria-label="{{ app_name }}">
+          <title>{{ app_name }}</title>
+          <defs>
+            <linearGradient id="fundoLogoSgp" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#fde047"/>
+              <stop offset="0.55" stop-color="#eab308"/>
+              <stop offset="1" stop-color="#ca8a04"/>
+            </linearGradient>
+          </defs>
+          <rect class="logo-fundo" width="64" height="64" rx="15" fill="url(#fundoLogoSgp)"/>
+          <g class="logo-fluxo">
+            <g fill="none" stroke="#241a02" stroke-width="4.2" stroke-linecap="round">
+              <path d="M12.95 21 A 22 22 0 0 1 51.05 21"/>
+              <path d="M51.05 43 A 22 22 0 0 1 12.95 43"/>
+            </g>
+            <g fill="#241a02">
+              <polygon points="53.6,25.4 46.6,21.3 53.5,17.3"/>
+              <polygon points="10.4,38.6 17.4,42.7 10.5,46.7"/>
+            </g>
+          </g>
+          <g class="logo-barras" fill="#241a02">
+            <rect class="logo-barra logo-barra-1" x="21" y="33" width="5" height="8" rx="1.6"/>
+            <rect class="logo-barra logo-barra-2" x="29.5" y="28" width="5" height="13" rx="1.6"/>
+            <rect class="logo-barra logo-barra-3" x="38" y="23" width="5" height="18" rx="1.6"/>
+          </g>
+        </svg>
+        <div>
+          <h1>{{ module_name }}</h1>
+          <p>SOAP do sistema financeiro — NAP e pagamentos por empenho</p>
+        </div>
+      </div>
+
+      <div class="topo-acoes">
+        <a class="btn btn-fantasma" href="/" title="Voltar ao portal">Portal</a>
+        <button class="btn btn-fantasma btn-icone" id="btn-tema" title="Alternar tema" aria-label="Alternar tema">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icone-claro">
+            <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>
+          </svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icone-escuro" style="display:none">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <nav class="abas" role="tablist">
+      <button class="aba ativa" data-aba="nap" role="tab">Relação diária NAP</button>
+      <button class="aba" data-aba="empenho" role="tab">Pagamento por empenho</button>
+      <button class="aba" data-aba="glossario" role="tab">O que é cada campo</button>
+    </nav>
+  </div>
+</header>
+
+<section class="painel-aba ativo" data-painel="nap">
+  <div class="filtros sgp-filtros">
+    <div class="container">
+      <div class="sgp-filtros-grade" data-tipo="nap">
+        <div class="campo">
+          <label for="nap-ano">Ano</label>
+          <input type="number" id="nap-ano" class="entrada" min="2000" max="2100">
+        </div>
+        <div class="campo">
+          <label for="nap-inicio">De</label>
+          <input type="date" id="nap-inicio" class="entrada">
+        </div>
+        <div class="campo">
+          <label for="nap-fim">Até</label>
+          <input type="date" id="nap-fim" class="entrada">
+        </div>
+        <div class="campo">
+          <label for="nap-ug">UG</label>
+          <input type="text" id="nap-ug" class="entrada" placeholder="ex.: 0934">
+        </div>
+        <div class="campo">
+          <label for="nap-fonte">Fonte</label>
+          <input type="text" id="nap-fonte" class="entrada" placeholder="ex.: 01500000">
+        </div>
+        <div class="campo sgp-campo-busca">
+          <label for="nap-busca">Busca</label>
+          <input type="search" id="nap-busca" class="entrada" placeholder="Credor, NAP, OP, processo…">
+        </div>
+        <div class="campo">
+          <label for="nap-qtd">Qtd. SOAP</label>
+          <input type="number" id="nap-qtd" class="entrada" min="1" max="500" value="100">
+        </div>
+        <div class="sgp-filtros-acoes">
+          <button type="button" class="btn btn-primario" data-consultar="nap">Consultar</button>
+          <button type="button" class="btn" data-limpar="nap">Limpar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <main class="container sgp-page">
+    <div class="sgp-aviso" id="nap-aviso" hidden></div>
+    <div class="sgp-cards" id="nap-resumo">
+      <article class="sgp-kpi"><span>Registros</span><strong id="nap-qtd-reg">—</strong></article>
+      <article class="sgp-kpi"><span>Total bruto</span><strong id="nap-tot-bru">—</strong></article>
+      <article class="sgp-kpi"><span>Descontos</span><strong id="nap-tot-desc">—</strong></article>
+      <article class="sgp-kpi sgp-kpi--liq"><span>Total líquido</span><strong id="nap-tot-liq">—</strong></article>
+    </div>
+    <div class="tabela-envolucro sgp-tabela-box">
+      <table class="tabela" id="nap-tabela">
+        <thead id="nap-thead"></thead>
+        <tbody id="nap-corpo"><tr><td class="sgp-vazio">Informe o período e clique em Consultar.</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</section>
+
+<section class="painel-aba" data-painel="empenho">
+  <div class="filtros sgp-filtros">
+    <div class="container">
+      <div class="sgp-filtros-grade" data-tipo="empenho">
+        <div class="campo">
+          <label for="emp-ano">Ano</label>
+          <input type="number" id="emp-ano" class="entrada" min="2000" max="2100">
+        </div>
+        <div class="campo">
+          <label for="emp-inicio">De</label>
+          <input type="date" id="emp-inicio" class="entrada">
+        </div>
+        <div class="campo">
+          <label for="emp-fim">Até</label>
+          <input type="date" id="emp-fim" class="entrada">
+        </div>
+        <div class="campo sgp-campo-ug">
+          <label for="emp-grupo-ug">Grupo UG</label>
+          <select id="emp-grupo-ug" class="entrada">
+            <option value="86">86 — EDUCAÇÃO</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label for="emp-fonte">Fonte recurso</label>
+          <input type="text" id="emp-fonte" class="entrada" placeholder="vazio = todas">
+        </div>
+        <div class="campo sgp-campo-busca">
+          <label for="emp-busca">Busca</label>
+          <input type="search" id="emp-busca" class="entrada" placeholder="Credor, NAP, empenho…">
+        </div>
+        <div class="campo">
+          <label for="emp-qtd">Qtd. SOAP</label>
+          <input type="number" id="emp-qtd" class="entrada" min="1" max="500" value="100">
+        </div>
+        <div class="sgp-filtros-acoes">
+          <button type="button" class="btn btn-primario" data-consultar="empenho">Consultar</button>
+          <button type="button" class="btn" data-limpar="empenho">Limpar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <main class="container sgp-page">
+    <div class="sgp-aviso" id="emp-aviso" hidden></div>
+    <div class="sgp-cards" id="emp-resumo">
+      <article class="sgp-kpi"><span>Registros</span><strong id="emp-qtd-reg">—</strong></article>
+      <article class="sgp-kpi"><span>Total bruto</span><strong id="emp-tot-bru">—</strong></article>
+      <article class="sgp-kpi"><span>Descontos</span><strong id="emp-tot-desc">—</strong></article>
+      <article class="sgp-kpi sgp-kpi--liq"><span>Total líquido</span><strong id="emp-tot-liq">—</strong></article>
+    </div>
+    <div class="tabela-envolucro sgp-tabela-box">
+      <table class="tabela" id="emp-tabela">
+        <thead id="emp-thead"></thead>
+        <tbody id="emp-corpo"><tr><td class="sgp-vazio">Informe o período e o grupo UG, depois consulte.</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+</section>
+
+<section class="painel-aba" data-painel="glossario">
+  <main class="container sgp-page sgp-page--glossario">
+    <div class="sgp-glossario-intro">
+      <h2>Campos das consultas SGP</h2>
+      <p>Significado dos campos retornados pelas operações de NAP e pagamento por empenho.</p>
+    </div>
+    <div class="sgp-glossario-blocos">
+      <div>
+        <h3>Relação diária NAP</h3>
+        <div class="sgp-glossario" id="gloss-nap"></div>
+      </div>
+      <div>
+        <h3>Pagamento por empenho</h3>
+        <div class="sgp-glossario" id="gloss-empenho"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<div class="modal-fundo" id="sgp-modal" hidden>
+  <div class="modal modal--largo">
+    <div class="modal-cabecalho">Detalhe do registro</div>
+    <div class="modal-corpo" id="sgp-modal-corpo"></div>
+    <div class="modal-rodape">
+      <button type="button" class="btn btn-primario" id="sgp-modal-fechar">Fechar</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/sgp.js?v=2"></script>
+{% endblock %}
