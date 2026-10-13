@@ -7,7 +7,7 @@
   <div class="container">
     <div class="topo-linha">
       <div class="marca">
-        <a href="/" class="marca-link" title="Voltar aos módulos">
+        <a href="{{ root_path }}/" class="marca-link" title="Voltar aos módulos">
           <svg class="marca-icone" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="42" height="42" role="img" aria-label="{{ portal_name }}">
             <title>{{ portal_name }}</title>
             <defs>
@@ -38,8 +38,8 @@
       </div>
 
       <div class="topo-acoes">
-        <a class="btn btn-fantasma" href="/">Portal</a>
-        <a class="btn btn-fantasma" href="/fluxo">{{ module_name }}</a>
+        <a class="btn btn-fantasma" href="{{ root_path }}/">Portal</a>
+        <a class="btn btn-fantasma" href="{{ root_path }}/fluxo">{{ module_name }}</a>
         <button type="button" class="btn-perfil" id="btn-meu-perfil" title="Abrir meu perfil" aria-label="Perfil de {{ usuario.nome }}">
           <span class="btn-perfil-avatar" aria-hidden="true">{{ usuario.nome[:1] }}</span>
           <span class="btn-perfil-corpo">
@@ -129,6 +129,6 @@
 <script>
   window.USUARIO_LOGADO = {{ usuario | tojson }};
 </script>
-<script src="/static/js/auth-ui.js?v=4"></script>
-<script src="/static/js/usuarios.js?v=3"></script>
+<script src="{{ root_path }}/static/js/auth-ui.js?v=5"></script>
+<script src="{{ root_path }}/static/js/usuarios.js?v=4"></script>
 {% endblock %}

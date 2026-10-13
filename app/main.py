@@ -35,6 +35,8 @@ from .config import (
     MODULE_TESOURO_NAME,
     MODULE_TESOURO_PRONTO,
     PORTAL_NAME,
+    app_url,
+    get_root_path,
     get_session_secret,
     get_uploads_dir,
 )
@@ -53,13 +55,21 @@ from .finance import (
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_PATH = get_root_path()
 
-app = FastAPI(title=PORTAL_NAME, docs_url="/api/docs", redoc_url=None)
-app.add_middleware(SessionMiddleware, secret_key=get_session_secret(), session_cookie="fundeb_session")
+app = FastAPI(title=PORTAL_NAME, docs_url="/api/docs", redoc_url=None, root_path=ROOT_PATH)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=get_session_secret(),
+    session_cookie="fundeb_session",
+    path=ROOT_PATH or "/",
+)
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 templates.env.filters["moeda"] = format_currency
+templates.env.globals["root_path"] = ROOT_PATH
+templates.env.globals["app_url"] = app_url
 
 
 @app.on_event("startup")
@@ -241,7 +251,7 @@ def pagina_sgp(request: Request):
 def pagina_tesouro(request: Request):
     if MODULE_TESOURO_PRONTO:
         # Quando o módulo estiver pronto, esta rota passa a renderizar a tela real.
-        return RedirectResponse(url="/", status_code=302)
+        return RedirectResponse(url=app_url("/"), status_code=302)
     return templates.TemplateResponse(
         request,
         "em_construcao.html",
@@ -259,10 +269,13 @@ def pagina_tesouro(request: Request):
 def pagina_usuarios(request: Request):
     usuario = usuario_da_sessao(request)
     if not usuario:
-        return RedirectResponse(url="/?login=1&next=/usuarios", status_code=302)
+        return RedirectResponse(
+            url=app_url("/?login=1&next=") + app_url("/usuarios"),
+            status_code=302,
+        )
     if not usuario["eh_admin"]:
         # Editores autenticados não gerenciam usuários — voltam ao portal.
-        return RedirectResponse(url="/", status_code=302)
+        return RedirectResponse(url=app_url("/"), status_code=302)
 
     return templates.TemplateResponse(
         request,

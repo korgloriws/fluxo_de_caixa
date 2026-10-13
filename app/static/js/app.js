@@ -87,10 +87,15 @@
     $('#barra-carregando').classList.toggle('ativo', contadorCarregamento > 0);
   }
 
+  function withRoot(url) {
+    if (typeof window.withRoot === 'function') return window.withRoot(url);
+    return url;
+  }
+
   async function requisitar(url, opcoes = {}) {
     carregando(true);
     try {
-      const resposta = await fetch(url, opcoes);
+      const resposta = await fetch(withRoot(url), opcoes);
       const tipoConteudo = resposta.headers.get('content-type') || '';
 
       if (!resposta.ok) {
@@ -1337,7 +1342,7 @@
       return;
     }
     try {
-      const resposta = await fetch('/api/backup/baixar', { method: 'GET' });
+      const resposta = await fetch(withRoot('/api/backup/baixar'), { method: 'GET' });
       if (!resposta.ok) {
         let detalhe = `Erro ${resposta.status}`;
         const tipo = resposta.headers.get('content-type') || '';
@@ -1953,12 +1958,12 @@
   /* ==================== Exportação ==================== */
 
   $('#btn-exportar-excel').addEventListener('click', () => {
-    window.location.href = '/api/exportar/excel?' + parametrosFiltro().toString();
+    window.location.href = withRoot('/api/exportar/excel?' + parametrosFiltro().toString());
     notificar('Gerando a planilha do período filtrado...', 'info', 2600);
   });
 
   $('#btn-exportar-pdf').addEventListener('click', () => {
-    window.location.href = '/api/exportar/pdf?' + parametrosFiltro().toString();
+    window.location.href = withRoot('/api/exportar/pdf?' + parametrosFiltro().toString());
     notificar('Gerando o relatório em PDF...', 'info', 2600);
   });
 

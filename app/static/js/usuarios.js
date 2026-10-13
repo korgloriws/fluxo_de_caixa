@@ -14,8 +14,13 @@
     }, 4000);
   }
 
+  function withRoot(url) {
+    if (typeof window.withRoot === 'function') return window.withRoot(url);
+    return url;
+  }
+
   async function requisitar(url, opcoes = {}) {
-    const resposta = await fetch(url, opcoes);
+    const resposta = await fetch(withRoot(url), opcoes);
     const tipo = resposta.headers.get('content-type') || '';
     if (!resposta.ok) {
       let detalhe = `Erro ${resposta.status}`;
@@ -150,7 +155,7 @@
   carregar().catch((erro) => {
     notificar(erro.message, 'erro');
     if (String(erro.message).includes('401') || String(erro.message).toLowerCase().includes('login')) {
-      location.href = '/?login=1&next=/usuarios';
+      location.href = withRoot('/?login=1&next=') + withRoot('/usuarios');
     }
   });
 

@@ -1,6 +1,11 @@
+# Deploy na VPS (porta pública direta, sem nginx path).
+#   docker compose up -d --build
+# Acesso: http://IP:3070/
+
 services:
   fluxo:
     build: .
+    image: fluxo-de-caixa
     container_name: fluxo_de_caixa
     ports:
       - "${APP_PORT:-3070}:8000"
@@ -12,6 +17,7 @@ services:
       DATA_DIR: /app/data
       UPLOADS_DIR: /app/uploads
       EXPORTS_DIR: /app/exports
+      ROOT_PATH: ${ROOT_PATH:-}
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads

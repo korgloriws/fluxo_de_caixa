@@ -20,8 +20,13 @@ window.AuthUI = (() => {
     }, 4000);
   }
 
+  function withRoot(url) {
+    if (typeof window.withRoot === 'function') return window.withRoot(url);
+    return url;
+  }
+
   async function requisitar(url, opcoes = {}) {
-    const resposta = await fetch(url, opcoes);
+    const resposta = await fetch(withRoot(url), opcoes);
     const tipo = resposta.headers.get('content-type') || '';
     if (!resposta.ok) {
       let detalhe = `Erro ${resposta.status}`;
@@ -265,7 +270,7 @@ window.AuthUI = (() => {
       if (usuario.eh_admin) {
         const link = document.createElement('a');
         link.className = 'btn btn-portal';
-        link.href = '/usuarios';
+        link.href = withRoot('/usuarios');
         link.textContent = 'Usuários';
         link.title = 'Somente administrador';
         fragment.appendChild(link);
@@ -302,7 +307,7 @@ window.AuthUI = (() => {
     ligarModalLogin({
       onSuccess: (usuario) => {
         if (next) {
-          location.href = next;
+          location.href = withRoot(next);
           return;
         }
         usuarioPortal = usuario;

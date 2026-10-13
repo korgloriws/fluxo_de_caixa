@@ -168,7 +168,8 @@
     const barra = $('#barra-carregando');
     if (barra) barra.classList.add('ativo');
     try {
-      const resp = await fetch(`/api/bb-extrato?${paramsConsulta().toString()}`);
+      const url = `/api/bb-extrato?${paramsConsulta().toString()}`;
+      const resp = await fetch(window.withRoot ? window.withRoot(url) : url);
       if (!resp.ok) throw new Error('Falha ao carregar extrato');
       const dados = await resp.json();
       estado.glossario = dados.glossario || estado.glossario;
@@ -199,7 +200,8 @@
     modal.hidden = false;
     modal.classList.add('aberto');
     try {
-      const resp = await fetch(`/api/bb-extrato/${encodeURIComponent(id)}`);
+      const url = `/api/bb-extrato/${encodeURIComponent(id)}`;
+      const resp = await fetch(window.withRoot ? window.withRoot(url) : url);
       if (!resp.ok) throw new Error('Lançamento não encontrado');
       const row = await resp.json();
       const bruto = row.bruto || {};

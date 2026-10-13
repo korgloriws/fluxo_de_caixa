@@ -40,7 +40,7 @@
       </div>
 
       <div class="topo-acoes">
-        <a class="btn btn-fantasma" href="/" title="Voltar ao portal">Portal</a>
+        <a class="btn btn-fantasma" href="{{ root_path }}/" title="Voltar ao portal">Portal</a>
         <button class="btn btn-fantasma btn-icone" id="btn-tema" title="Alternar tema claro/escuro" aria-label="Alternar tema">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icone-claro">
             <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>
@@ -175,5 +175,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/bb-extrato.js?v=2"></script>
+<script src="{{ root_path }}/static/js/bb-extrato.js?v=3"></script>
 {% endblock %}

@@ -4,9 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block titulo %}{{ app_name }}{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=25">
-  <link rel="icon" type="image/svg+xml" href="/static/img/logo.svg">
+  <link rel="stylesheet" href="{{ root_path }}/static/css/app.css?v=25">
+  <link rel="icon" type="image/svg+xml" href="{{ root_path }}/static/img/logo.svg">
   <script>
+    window.__ROOT_PATH__ = {{ root_path|tojson }};
+    window.withRoot = function (path) {
+      var root = window.__ROOT_PATH__ || '';
+      if (!path || typeof path !== 'string') return path;
+      if (/^https?:\/\//i.test(path)) return path;
+      if (root && (path === root || path.indexOf(root + '/') === 0)) return path;
+      if (path.charAt(0) === '/') return root + path;
+      return path;
+    };
     // Aplicado antes da primeira pintura para não piscar o tema errado.
     (function () {
       var salvo = localStorage.getItem('fundeb-tema');
@@ -22,7 +31,7 @@
 
   <div class="notificacoes" id="notificacoes"></div>
 
-  <script src="/static/vendor/echarts.min.js"></script>
+  <script src="{{ root_path }}/static/vendor/echarts.min.js"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

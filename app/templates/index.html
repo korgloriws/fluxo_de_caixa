@@ -38,8 +38,8 @@
       </div>
 
       <div class="topo-acoes">
-        <a class="btn btn-fantasma" href="/" title="Voltar ao portal">Portal</a>
-        <a class="btn btn-fantasma" href="/usuarios" id="link-usuarios" hidden title="Somente administrador">Usuários</a>
+        <a class="btn btn-fantasma" href="{{ root_path }}/" title="Voltar ao portal">Portal</a>
+        <a class="btn btn-fantasma" href="{{ root_path }}/usuarios" id="link-usuarios" hidden title="Somente administrador">Usuários</a>
         <button type="button" class="sessao-status" id="sessao-status" hidden disabled>Visualizando</button>
         <button class="btn btn-primario" id="btn-editar" title="Entrar para editar">Editar</button>
         <button class="btn btn-fantasma" id="btn-sair" hidden>Sair</button>
@@ -870,7 +870,7 @@
     usuario: {{ usuario | tojson }}
   };
 </script>
-<script src="/static/js/auth-ui.js?v=4"></script>
-<script src="/static/js/graficos.js"></script>
-<script src="/static/js/app.js?v=18"></script>
+<script src="{{ root_path }}/static/js/auth-ui.js?v=5"></script>
+<script src="{{ root_path }}/static/js/graficos.js"></script>
+<script src="{{ root_path }}/static/js/app.js?v=19"></script>
 {% endblock %}

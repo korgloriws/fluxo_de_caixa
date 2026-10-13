@@ -89,7 +89,7 @@
   }
 
   async function carregarMeta() {
-    const resp = await fetch('/api/sgp/meta');
+    const resp = await fetch(window.withRoot ? window.withRoot('/api/sgp/meta') : '/api/sgp/meta');
     estado.meta = await resp.json();
     renderGlossario();
     const st = estado.meta.status || {};
@@ -103,7 +103,8 @@
     if (!sel) return;
     const ano = $('#emp-ano')?.value || new Date().getFullYear();
     try {
-      const resp = await fetch(`/api/sgp/grupos-ug?ano=${encodeURIComponent(ano)}`);
+      const url = `/api/sgp/grupos-ug?ano=${encodeURIComponent(ano)}`;
+      const resp = await fetch(window.withRoot ? window.withRoot(url) : url);
       if (!resp.ok) throw new Error('Falha ao listar grupos UG');
       const dados = await resp.json();
       const atual = sel.value || '86';
@@ -246,7 +247,8 @@
     if (barra) barra.classList.add('ativo');
     try {
       const q = tipo === 'nap' ? paramsNap() : paramsEmpenho();
-      const resp = await fetch(`/api/sgp/consulta/${tipo}?${q.toString()}`);
+      const url = `/api/sgp/consulta/${tipo}?${q.toString()}`;
+      const resp = await fetch(window.withRoot ? window.withRoot(url) : url);
       const dados = await resp.json();
       if (!resp.ok) throw new Error(dados.detail || 'Falha na consulta SGP');
       renderAviso(tipo, { ...dados.meta, titulo: dados.meta?.titulo });

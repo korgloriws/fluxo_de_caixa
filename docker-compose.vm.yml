@@ -1,0 +1,33 @@
+# Deploy na VM (rede proxy + nginx em /fluxo-de-caixa/).
+#   docker compose -f docker-compose.vm.yml up -d --build
+#
+# URL: http://10.140.100.14/fluxo-de-caixa/
+# Debug local: http://127.0.0.1:8002/
+
+services:
+  fluxo:
+    build: .
+    image: fluxo-de-caixa
+    container_name: fluxo-de-caixa
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      DATA_DIR: /app/data
+      UPLOADS_DIR: /app/uploads
+      EXPORTS_DIR: /app/exports
+      ROOT_PATH: ${ROOT_PATH:-/fluxo-de-caixa}
+    ports:
+      - "127.0.0.1:8002:8000"
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+      - ./exports:/app/exports
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true

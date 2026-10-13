@@ -128,3 +128,21 @@ def get_session_secret() -> str:
             "Nenhum segredo padrão é embutido no código."
         )
     return secret
+
+
+def get_root_path() -> str:
+    """Prefixo público atrás do nginx (ex.: /fluxo-de-caixa). Vazio na VPS (porta direta)."""
+    raw = (os.environ.get("ROOT_PATH") or "").strip()
+    if not raw or raw == "/":
+        return ""
+    if not raw.startswith("/"):
+        raw = "/" + raw
+    return raw.rstrip("/")
+
+
+def app_url(path: str = "/") -> str:
+    """Monta URL absoluta do app considerando ROOT_PATH."""
+    root = get_root_path()
+    if not path.startswith("/"):
+        path = "/" + path
+    return f"{root}{path}" if root else path

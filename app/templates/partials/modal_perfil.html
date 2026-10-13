@@ -7,7 +7,7 @@
         Altere seu nome, login ou senha. A senha atual é obrigatória para salvar.
         {% if usuario is defined and usuario and usuario.eh_admin %}
         Como administrador, você também gerencia os demais em
-        <a href="/usuarios">Usuários</a>.
+        <a href="{{ root_path }}/usuarios">Usuários</a>.
         {% endif %}
       </p>
       <div class="campo">
