@@ -32,12 +32,14 @@
     const q = new URLSearchParams();
     const inicio = $('#bb-inicio')?.value;
     const fim = $('#bb-fim')?.value;
+    const conta = $('#bb-conta')?.value;
     const sinal = $('#bb-sinal')?.value;
     const historico = $('#bb-historico')?.value;
     const busca = $('#bb-busca')?.value?.trim();
     const saldos = $('#bb-saldos')?.checked;
     if (inicio) q.set('inicio', inicio);
     if (fim) q.set('fim', fim);
+    if (conta) q.set('conta', conta);
     if (sinal) q.set('sinal', sinal);
     if (historico) q.set('historico', historico);
     if (busca) q.set('busca', busca);
@@ -45,6 +47,22 @@
     q.set('pagina', String(estado.pagina));
     q.set('por_pagina', String(estado.porPagina));
     return q;
+  }
+
+  function preencherContas(lista) {
+    const sel = $('#bb-conta');
+    if (!sel) return;
+    const atual = sel.value;
+    sel.innerHTML = '<option value="">Todas as contas</option>';
+    (lista || []).forEach((c) => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.rotulo || `${c.agencia}/${c.conta}`;
+      sel.appendChild(opt);
+    });
+    if (atual && [...sel.options].some((o) => o.value === atual)) {
+      sel.value = atual;
+    }
   }
 
   function preencherHistoricos(lista) {
@@ -71,10 +89,14 @@
       return;
     }
     el.hidden = false;
-    el.className = 'bb-aviso' + (meta.modo === 'sandbox' ? ' bb-aviso--sandbox' : ' bb-aviso--prod');
+    const comErro = !!meta.erro;
+    el.className =
+      'bb-aviso' +
+      (meta.modo === 'sandbox' ? ' bb-aviso--sandbox' : ' bb-aviso--prod') +
+      (comErro ? ' bb-aviso--erro' : '');
     const arquivos = (meta.arquivos || []).join(', ') || '—';
     el.innerHTML = `
-      <strong>${meta.modo === 'sandbox' ? 'Ambiente de teste (sandbox)' : 'Produção'}</strong>
+      <strong>${meta.modo === 'sandbox' ? 'Ambiente de teste (sandbox)' : (comErro ? 'Produção (falha)' : 'Produção')}</strong>
       <span>${meta.aviso}</span>
       <small>Fonte: ${arquivos} · ${meta.total_carregado || 0} registros carregados</small>
     `;
@@ -100,7 +122,7 @@
     const corpo = $('#bb-corpo');
     if (!corpo) return;
     if (!lancamentos?.length) {
-      corpo.innerHTML = '<tr><td colspan="7" class="bb-vazio">Nenhum lançamento com estes filtros.</td></tr>';
+      corpo.innerHTML = '<tr><td colspan="8" class="bb-vazio">Nenhum lançamento com estes filtros.</td></tr>';
       return;
     }
     corpo.innerHTML = lancamentos
@@ -108,6 +130,7 @@
         (row) => `
       <tr class="${row.eh_saldo ? 'bb-linha-saldo' : ''}">
         <td class="bb-td-data">${row.data_exibicao || '—'}</td>
+        <td class="bb-td-conta">${escapeHtml(row.conta_exibicao || '—')}</td>
         <td class="bb-td-sinal">${badgeSinal(row)}</td>
         <td class="num ${row.sinal === 'D' ? 'bb-valor-d' : 'bb-valor-c'}">${row.valor_exibicao}</td>
         <td class="bb-td-hist">${escapeHtml(row.historico)}</td>
@@ -175,6 +198,7 @@
       estado.glossario = dados.glossario || estado.glossario;
       renderAviso(dados.meta);
       renderResumo(dados.resumo);
+      preencherContas(dados.contas);
       preencherHistoricos(dados.historicos);
       renderTabela(dados.lancamentos);
       renderPaginacao(dados.paginacao);
@@ -186,7 +210,7 @@
       console.error(err);
       notificar(err.message || 'Erro ao consultar extrato', 'erro');
       $('#bb-corpo').innerHTML =
-        '<tr><td colspan="7" class="bb-vazio">Não foi possível carregar o extrato.</td></tr>';
+        '<tr><td colspan="8" class="bb-vazio">Não foi possível carregar o extrato.</td></tr>';
     } finally {
       if (barra) barra.classList.remove('ativo');
     }
@@ -208,6 +232,7 @@
       const linhasPrincipais = [
         ['Data', row.data_exibicao],
         ['Data movimento', row.data_movimento_exibicao],
+        ['Conta', row.conta_exibicao || '—'],
         ['Sinal', row.sinal_rotulo],
         ['Valor', row.valor_exibicao],
         ['Histórico', row.historico],
@@ -267,7 +292,7 @@
       carregar();
     });
     $('#bb-limpar')?.addEventListener('click', () => {
-      ['bb-inicio', 'bb-fim', 'bb-sinal', 'bb-historico', 'bb-busca'].forEach((id) => {
+      ['bb-inicio', 'bb-fim', 'bb-conta', 'bb-sinal', 'bb-historico', 'bb-busca'].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = '';
       });

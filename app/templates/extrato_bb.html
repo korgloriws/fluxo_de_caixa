@@ -72,6 +72,12 @@
           <input type="date" id="bb-fim" class="entrada">
         </div>
         <div class="campo">
+          <label for="bb-conta">Conta</label>
+          <select id="bb-conta" class="entrada">
+            <option value="">Todas as contas</option>
+          </select>
+        </div>
+        <div class="campo">
           <label for="bb-sinal">Tipo</label>
           <select id="bb-sinal" class="entrada">
             <option value="">Todos</option>
@@ -80,7 +86,7 @@
           </select>
         </div>
         <div class="campo bb-campo-historico">
-          <label for="bb-historico">Histórico</label>
+          <label for="bb-historico">Histórico / lançamento</label>
           <select id="bb-historico" class="entrada">
             <option value="">Todos</option>
           </select>
@@ -132,6 +138,7 @@
         <thead>
           <tr>
             <th>Data</th>
+            <th>Conta</th>
             <th>Sinal</th>
             <th class="num">Valor</th>
             <th>Histórico</th>
@@ -141,7 +148,7 @@
           </tr>
         </thead>
         <tbody id="bb-corpo">
-          <tr><td colspan="7" class="bb-vazio">Carregando extrato…</td></tr>
+          <tr><td colspan="8" class="bb-vazio">Carregando extrato…</td></tr>
         </tbody>
       </table>
     </div>
@@ -175,5 +182,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="{{ root_path }}/static/js/bb-extrato.js?v=3"></script>
+<script src="{{ root_path }}/static/js/bb-extrato.js?v=4"></script>
 {% endblock %}

@@ -1,27 +1,46 @@
 """Consulta visual do Extrato BB (API Extratos).
 
-Por enquanto lê os JSON de sandbox em exports/. Quando a app estiver em
-produção, a mesma camada passa a chamar a API real sem mudar a UI.
+Modo controlado por BB_MODO no .env:
+  - sandbox  → JSON locais em exports/
+  - producao → API real (datas vêm do filtro da UI, não do .env)
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from .bb_client import BbClientError, buscar_extrato, listar_contas_configuradas
 from .config import get_exports_dir
 from .finance import format_currency, parse_number
 
-# Arquivos locais usados enquanto a produção não é liberada.
+# Arquivos locais usados no modo sandbox.
 ARQUIVOS_SANDBOX = (
     "bb_extrato_sandbox.json",
     "bb_extrato_sandbox_p2.json",
 )
 
-MODO_ATUAL = "sandbox"  # depois: "producao"
+# Cache da última carga (detalhe /api/bb-extrato/{id}).
+_cache_lancamentos: list[dict] = []
+
+
+def get_modo() -> str:
+    raw = (os.environ.get("BB_MODO") or "").strip().lower()
+    if raw in {"producao", "produção", "prod", "production"}:
+        return "producao"
+    if raw in {"sandbox", "teste", "homolog", "homologacao", "homologação"}:
+        return "sandbox"
+    # Auto: se houver credenciais + cert, assume produção.
+    if (os.environ.get("BB_CLIENT_ID") or "").strip() and (os.environ.get("BB_CERT_FILE") or "").strip():
+        return "producao"
+    return "sandbox"
+
+
+MODO_ATUAL = get_modo()  # valor inicial; consultar() relê via get_modo()
 
 GLOSSARIO: list[dict[str, str]] = [
     {
@@ -161,7 +180,14 @@ def _eh_linha_saldo(item: dict) -> bool:
     return hist in {"SALDO ANTERIOR", "SALDO DO DIA", "SALDO ATUAL", "SALDO FINAL"}
 
 
-def normalizar_lancamento(item: dict, *, origem: str, indice: int) -> dict:
+def normalizar_lancamento(
+    item: dict,
+    *,
+    origem: str,
+    indice: int,
+    agencia: str | None = None,
+    conta: str | None = None,
+) -> dict:
     data_lanc = _parse_data_bb(item.get("dataLancamento"))
     data_mov = _parse_data_bb(item.get("dataMovimento"))
     sinal = str(item.get("indicadorSinalLancamento") or "").strip().upper() or "?"
@@ -170,9 +196,12 @@ def normalizar_lancamento(item: dict, *, origem: str, indice: int) -> dict:
     historico = str(item.get("textoDescricaoSubHistorico") or "").strip()
     complemento = str(item.get("textoInformacaoComplementar") or "").strip()
     eh_saldo = _eh_linha_saldo(item)
+    ag = str(agencia or item.get("_agencia") or "").strip()
+    ct = str(conta or item.get("_conta") or "").strip()
+    conta_id = f"{ag}:{ct}" if ag and ct else ""
 
     return {
-        "id": f"{origem}-{indice}",
+        "id": f"{origem}-{indice}" if not conta_id else f"{origem}-{ag}-{ct}-{indice}",
         "data": data_lanc.isoformat() if data_lanc else None,
         "data_exibicao": data_lanc.strftime("%d/%m/%Y") if data_lanc else "—",
         "data_movimento": data_mov.isoformat() if data_mov else None,
@@ -192,6 +221,10 @@ def normalizar_lancamento(item: dict, *, origem: str, indice: int) -> dict:
         "numero_lote": str(item.get("numeroLote") or "").strip() or "—",
         "id_transacao": str(item.get("textoIdentificadorUnicoTransacao") or "").strip(),
         "agencia_origem": item.get("codigoAgenciaOrigem") or 0,
+        "agencia": ag,
+        "conta": ct,
+        "conta_id": conta_id,
+        "conta_exibicao": f"{ag}/{ct}" if ag and ct else "—",
         "cpf_cnpj_contraparte": str(
             item.get("numeroCadastroPessoaFisicaCadastroNacPessoasJuridicasContrapartida") or ""
         ).strip(),
@@ -275,6 +308,7 @@ def filtrar_lancamentos(
     sinal: Optional[str] = None,
     historico: Optional[str] = None,
     busca: Optional[str] = None,
+    conta_id: Optional[str] = None,
     incluir_saldos: bool = False,
 ) -> list[dict]:
     sinal_n = (sinal or "").strip().upper() or None
@@ -282,6 +316,7 @@ def filtrar_lancamentos(
         sinal_n = None
     hist_n = (historico or "").strip()
     busca_n = (busca or "").strip().casefold()
+    conta_n = (conta_id or "").strip()
 
     saida: list[dict] = []
     for row in lancamentos:
@@ -300,6 +335,8 @@ def filtrar_lancamentos(
             continue
         if hist_n and str(row.get("historico") or "") != hist_n:
             continue
+        if conta_n and str(row.get("conta_id") or "") != conta_n:
+            continue
         if busca_n:
             blob = " ".join(
                 [
@@ -308,6 +345,7 @@ def filtrar_lancamentos(
                     str(row.get("numero_documento") or ""),
                     str(row.get("id_transacao") or ""),
                     str(row.get("cpf_cnpj_contraparte") or ""),
+                    str(row.get("conta_exibicao") or ""),
                 ]
             ).casefold()
             if busca_n not in blob:
@@ -335,6 +373,66 @@ def resumir(lancamentos: list[dict]) -> dict:
     }
 
 
+def carregar_lancamentos_producao(
+    *,
+    inicio: Optional[date],
+    fim: Optional[date],
+    conta_id: Optional[str] = None,
+) -> tuple[list[dict], dict]:
+    """Chama a API BB; datas obrigatórias (filtro da UI)."""
+    if not inicio or not fim:
+        return [], {
+            "modo": "producao",
+            "fonte": "api_bb",
+            "arquivos": [],
+            "paginas": [],
+            "total_carregado": 0,
+            "aviso": (
+                "Selecione a data inicial e final no filtro para consultar o extrato real do BB."
+            ),
+            "producao_pronta": True,
+            "erro": False,
+            "precisa_periodo": True,
+        }
+
+    brutos, meta_api = buscar_extrato(inicio=inicio, fim=fim, conta_id=conta_id)
+    lancamentos: list[dict] = []
+    for idx, item in enumerate(brutos):
+        origem = f"api-{meta_api.get('ambiente', 'bb')}"
+        lancamentos.append(
+            normalizar_lancamento(
+                item,
+                origem=origem,
+                indice=idx,
+                agencia=str(item.get("_agencia") or ""),
+                conta=str(item.get("_conta") or ""),
+            )
+        )
+
+    def chave(row: dict) -> tuple:
+        return (row.get("data") or "9999-99-99", row.get("conta_id") or "", row["id"])
+
+    lancamentos.sort(key=chave)
+
+    contas = meta_api.get("contas") or []
+    contas_txt = ", ".join(f"{c.get('agencia')}/{c.get('conta')}" for c in contas) or "—"
+    meta = {
+        "modo": "producao",
+        "fonte": "api_bb",
+        "arquivos": [f"BB {contas_txt}", str(meta_api.get("base_url") or "")],
+        "paginas": meta_api.get("paginas") or [],
+        "total_carregado": len(lancamentos),
+        "aviso": (
+            f"Extrato real do Banco do Brasil ({meta_api.get('ambiente', 'producao')}). "
+            f"Período {inicio.strftime('%d/%m/%Y')} a {fim.strftime('%d/%m/%Y')} · conta(s) {contas_txt}."
+        ),
+        "producao_pronta": True,
+        "erro": False,
+        "api": meta_api,
+    }
+    return lancamentos, meta
+
+
 def consultar(
     *,
     inicio: Optional[date] = None,
@@ -342,31 +440,58 @@ def consultar(
     sinal: Optional[str] = None,
     historico: Optional[str] = None,
     busca: Optional[str] = None,
+    conta_id: Optional[str] = None,
     incluir_saldos: bool = False,
     pagina: int = 1,
     por_pagina: int = 50,
 ) -> dict:
-    todos, meta = carregar_lancamentos_sandbox()
+    global _cache_lancamentos, MODO_ATUAL
+    modo = get_modo()
+    MODO_ATUAL = modo
+    contas_disponiveis = listar_contas_configuradas()
+
+    if modo == "producao":
+        try:
+            todos, meta = carregar_lancamentos_producao(
+                inicio=inicio, fim=fim, conta_id=conta_id
+            )
+        except BbClientError as exc:
+            todos, meta = [], {
+                "modo": "producao",
+                "fonte": "api_bb",
+                "arquivos": [],
+                "paginas": [],
+                "total_carregado": 0,
+                "aviso": f"Falha ao consultar a API do BB: {exc}",
+                "producao_pronta": True,
+                "erro": True,
+            }
+    else:
+        todos, meta = carregar_lancamentos_sandbox()
+
+    _cache_lancamentos = list(todos)
+
+    # Em produção período/conta já vieram da API; em sandbox filtramos localmente.
     filtrados = filtrar_lancamentos(
         todos,
-        inicio=inicio,
-        fim=fim,
+        inicio=None if modo == "producao" else inicio,
+        fim=None if modo == "producao" else fim,
         sinal=sinal,
         historico=historico,
         busca=busca,
+        conta_id=None if modo == "producao" else conta_id,
         incluir_saldos=incluir_saldos,
     )
 
     pagina = max(1, int(pagina or 1))
     por_pagina = min(200, max(10, int(por_pagina or 50)))
     total = len(filtrados)
-    total_paginas = max(1, (total + por_pagina - 1) // por_pagina)
+    total_paginas = max(1, (total + por_pagina - 1) // por_pagina) if total else 1
     if pagina > total_paginas:
         pagina = total_paginas
     inicio_idx = (pagina - 1) * por_pagina
     fatia = filtrados[inicio_idx : inicio_idx + por_pagina]
 
-    # Para a UI: remove o bruto gigante da listagem (fica no detalhe sob demanda).
     itens = []
     for row in fatia:
         item = dict(row)
@@ -382,8 +507,10 @@ def consultar(
             "sinal": (sinal or "").upper() or None,
             "historico": historico or None,
             "busca": busca or None,
+            "conta": conta_id or None,
             "incluir_saldos": bool(incluir_saldos),
         },
+        "contas": contas_disponiveis,
         "historicos": listar_historicos(todos),
         "paginacao": {
             "pagina": pagina,
@@ -397,8 +524,13 @@ def consultar(
 
 
 def obter_detalhe(item_id: str) -> Optional[dict]:
-    todos, _meta = carregar_lancamentos_sandbox()
-    for row in todos:
+    for row in _cache_lancamentos:
         if row.get("id") == item_id:
             return row
+    # Fallback sandbox se cache vazio (ex.: refresh direto no detalhe).
+    if get_modo() != "producao":
+        todos, _meta = carregar_lancamentos_sandbox()
+        for row in todos:
+            if row.get("id") == item_id:
+                return row
     return None

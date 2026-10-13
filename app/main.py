@@ -919,6 +919,7 @@ def api_bb_extrato(
     sinal: Optional[str] = Query(None),
     historico: Optional[str] = Query(None),
     busca: Optional[str] = Query(None),
+    conta: Optional[str] = Query(None, description="agencia:conta ou vazio para todas"),
     incluir_saldos: bool = Query(False),
     pagina: int = Query(1, ge=1),
     por_pagina: int = Query(50, ge=10, le=200),
@@ -933,6 +934,7 @@ def api_bb_extrato(
         sinal=sinal,
         historico=historico,
         busca=busca,
+        conta_id=conta,
         incluir_saldos=incluir_saldos,
         pagina=pagina,
         por_pagina=por_pagina,
@@ -941,7 +943,14 @@ def api_bb_extrato(
 
 @app.get("/api/bb-extrato/glossario")
 def api_bb_extrato_glossario():
-    return {"glossario": bb_extrato.GLOSSARIO, "modo": bb_extrato.MODO_ATUAL}
+    return {"glossario": bb_extrato.GLOSSARIO, "modo": bb_extrato.get_modo()}
+
+
+@app.get("/api/bb-extrato/contas")
+def api_bb_extrato_contas():
+    from .bb_client import listar_contas_configuradas
+
+    return {"contas": listar_contas_configuradas()}
 
 
 @app.get("/api/bb-extrato/{item_id}")

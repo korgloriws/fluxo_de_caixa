@@ -19,3 +19,6 @@ fpdf2>=2.7.9
 # Integração SGP (SOAP do sistema financeiro)
 zeep>=4.2.1
 requests>=2.31.0
+
+# Extrato BB (leitura de certificado .pfx / mTLS)
+cryptography>=42.0.0
