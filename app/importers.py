@@ -19,14 +19,19 @@ from .finance import (
 )
 
 # Palavras-chave que identificam a origem do crédito na linha do extrato.
+# Padroes também aceitam texto colado típico de OCR (ex.: RECEBIMENTODEICMS).
 RECEITA_BANK_PATTERNS: dict[tuple[str, str], list[str]] = {
-    ("IMPOSTOS", "ORIGEM ITR"): [r"\bITR\b"],
-    ("IMPOSTOS", "ORIGEM IPVA"): [r"\bIPVA\b"],
-    ("IMPOSTOS", "ORIGEM ITCMD"): [r"\bITCMD\b"],
+    ("IMPOSTOS", "ORIGEM ITR"): [r"(?<![A-Za-z])ITR(?![A-Za-z])"],
+    ("IMPOSTOS", "ORIGEM IPVA"): [r"(?<![A-Za-z])IPVA(?![A-Za-z])"],
+    ("IMPOSTOS", "ORIGEM ITCMD"): [r"(?<![A-Za-z])ITCMD(?![A-Za-z])"],
     # Aceita IPI-EXP, IPI EXP, IPI/EXPORTACAO, IPI/EXP…
-    ("IMPOSTOS", "ORIGEM IPI-EXP"): [r"\bIPI[-/\s]?EXP"],
-    ("IMPOSTOS", "ORIGEM ICMS"): [r"RECEBIMENTO DE ICMS", r"\bICMS\b"],
-    ("IMPOSTOS", "ORIGEM FPM"): [r"FPE/FPM", r"\bFPM\b"],
+    ("IMPOSTOS", "ORIGEM IPI-EXP"): [r"(?<![A-Za-z])IPI[-/\s]?EXP"],
+    ("IMPOSTOS", "ORIGEM ICMS"): [
+        r"RECEBIMENTO\s*DE\s*ICMS",
+        r"RECEBIMENTODEICMS",
+        r"(?<![A-Za-z])ICMS(?![A-Za-z])",
+    ],
+    ("IMPOSTOS", "ORIGEM FPM"): [r"FPE\s*/\s*FPM", r"(?<![A-Za-z])FPM(?![A-Za-z])"],
 }
 
 DATE_RE = re.compile(r"^(\d{2}/\d{2}/\d{4})\b")
@@ -45,9 +50,9 @@ SINAL_ONLY_RE = re.compile(r"^\s*([CD])(?:\s+[CD])?\s*$", re.IGNORECASE)
 # Linhas de fechamento do extrato (saldo, total, subtotal) não são movimento:
 # importá-las duplicaria o valor já somado pelos lançamentos do período.
 LINHAS_NAO_MOVIMENTO = re.compile(
-    r"\b(SALDO|SALDOS|TOTAL|TOTAIS|SUBTOTAL|SUB-TOTAL|ACUMULADO|"
-    r"TRANSPORTE\s+DE\s+SALDO|SALDO\s+ANTERIOR|SALDO\s+FINAL|SALDO\s+INICIAL|"
-    r"RESUMO|EXTRATO\s+DE)\b",
+    r"(?<![A-Za-z])(SALDO|SALDOS|TOTAL|TOTAIS|SUBTOTAL|SUB-TOTAL|ACUMULADO|"
+    r"TRANSPORTE\s+DE\s+SALDO|SALDO\s*ANTERIOR|SALDO\s+FINAL|SALDO\s+INICIAL|"
+    r"RESUMO|EXTRATO\s*DE)(?![A-Za-z])",
     flags=re.IGNORECASE,
 )
 
@@ -84,7 +89,8 @@ def pdf_tem_texto_selecionavel(file_bytes: bytes) -> bool:
     return False
 
 
-def extract_lines_from_pdf(file_bytes: bytes) -> list[str]:
+def extract_lines_from_pdf(file_bytes: bytes, *, permitir_ocr: bool = True) -> list[str]:
+    """Extrai linhas do PDF. Se não houver texto, tenta OCR (Print to PDF)."""
     try:
         import pdfplumber
     except ImportError as exc:  # pragma: no cover - dependência declarada em requirements
@@ -101,7 +107,21 @@ def extract_lines_from_pdf(file_bytes: bytes) -> list[str]:
                 line = raw_line.strip()
                 if line:
                     lines.append(line)
-    return lines
+
+    if lines or not permitir_ocr:
+        return lines
+
+    from . import ocr_extrato
+
+    if not ocr_extrato.ocr_disponivel():
+        return []
+    try:
+        return ocr_extrato.extract_lines_from_pdf_ocr(file_bytes)
+    except Exception as exc:
+        raise ImportError_(
+            "Falha ao ler o PDF por OCR. Verifique se pymupdf e "
+            f"rapidocr-onnxruntime estão instalados. Detalhe: {exc}"
+        ) from exc
 
 
 def _parse_data_br(texto: str) -> Optional[date]:
@@ -130,6 +150,10 @@ def _classificar_receita(texto: str) -> Optional[tuple[str, str]]:
 def _eh_credito(line: str, proxima: str = "") -> Optional[bool]:
     """True=crédito, False=débito, None=sinal indefinido."""
     fim = line.rstrip()
+    if re.search(r"\d,\d{2}\s*D(?:\s+D)?\s*$", fim, flags=re.IGNORECASE):
+        return False
+    if re.search(r"\d,\d{2}\s*C(?:\s+C)?\s*$", fim, flags=re.IGNORECASE):
+        return True
     if fim.endswith(" D") or fim.endswith(" D D"):
         return False
     if fim.endswith(" C") or fim.endswith(" C C"):
@@ -174,14 +198,19 @@ def _valor_da_linha_receita(line: str, anterior: str = "", proxima: str = "") ->
     return None
 
 
-def datas_no_extrato(file_bytes: bytes) -> list[date]:
-    """Todas as datas de movimento encontradas no extrato."""
+def datas_nas_linhas(lines: list[str]) -> list[date]:
+    """Datas de movimento presentes nas linhas já extraídas."""
     encontradas: set[date] = set()
-    for line in extract_lines_from_pdf(file_bytes):
+    for line in lines:
         dia = _data_da_linha(line)
         if dia:
             encontradas.add(dia)
     return sorted(encontradas)
+
+
+def datas_no_extrato(file_bytes: bytes) -> list[date]:
+    """Todas as datas de movimento encontradas no extrato."""
+    return datas_nas_linhas(extract_lines_from_pdf(file_bytes))
 
 
 def receita_do_extrato(day: date, file_bytes: bytes, lines: Optional[list[str]] = None) -> list[dict]:

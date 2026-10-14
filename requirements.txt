@@ -11,6 +11,9 @@ pandas>=2.0.0
 
 # Leitura de extratos e planilhas
 pdfplumber>=0.11.0
+# OCR para PDF sem texto (Microsoft Print to PDF / captura de tela)
+pymupdf>=1.24.0
+rapidocr-onnxruntime>=1.3.0
 
 # Geração de relatórios
 xlsxwriter>=3.1.0

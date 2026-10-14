@@ -7,12 +7,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Dependências de sistema usadas por pdfplumber/pillow em alguns ambientes.
+# Dependências de sistema: pdfplumber/pillow + libs úteis ao OCR (onnxruntime).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
         libjpeg62-turbo-dev \
         zlib1g-dev \
+        libgomp1 \
+        libgl1 \
+        libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

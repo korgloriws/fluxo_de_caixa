@@ -1148,18 +1148,20 @@ async def api_importar(request: Request, arquivos: list[UploadFile]):
 def _importar_pdf(nome: str, conteudo: bytes, liberados: list[str], usuario: dict) -> dict:
     login = usuario["login"]
 
-    # Print to PDF / scan = só imagem. Sem texto não há como ler ICMS/FPM etc.
-    # O fallback tabular antigo podia travar ou gravar lixo e zerar o dia.
-    if not importers.pdf_tem_texto_selecionavel(conteudo):
+    # Prefere texto selecionável; se for Print to PDF / imagem, usa OCR (mesmo layout).
+    linhas = importers.extract_lines_from_pdf(conteudo, permitir_ocr=True)
+    if not linhas:
+        if not importers.pdf_tem_texto_selecionavel(conteudo):
+            raise importers.ImportError_(
+                "Este PDF não tem texto selecionável e o OCR não está disponível "
+                "(instale pymupdf e rapidocr-onnxruntime) ou não conseguiu ler o arquivo. "
+                "Prefira o extrato baixado no portal do BB. Nenhum dado foi alterado."
+            )
         raise importers.ImportError_(
-            "Este PDF não tem texto selecionável (parece impressão ou captura de tela). "
-            "No portal do Banco do Brasil, use a opção de baixar/salvar o extrato em PDF "
-            "(arquivo com texto, como o Fundeb.pdf gerado pelo sistema do banco) — "
-            "não use 'Imprimir para PDF' do Windows. Nenhum dado foi alterado."
+            "Não foi possível ler linhas neste PDF. Nenhum dado foi alterado."
         )
 
-    linhas = importers.extract_lines_from_pdf(conteudo)
-    dias = importers.datas_no_extrato(conteudo)
+    dias = importers.datas_nas_linhas(linhas)
 
     gravados = 0
     atualizados: list[date] = []
