@@ -23,13 +23,24 @@ RECEITA_BANK_PATTERNS: dict[tuple[str, str], list[str]] = {
     ("IMPOSTOS", "ORIGEM ITR"): [r"\bITR\b"],
     ("IMPOSTOS", "ORIGEM IPVA"): [r"\bIPVA\b"],
     ("IMPOSTOS", "ORIGEM ITCMD"): [r"\bITCMD\b"],
-    ("IMPOSTOS", "ORIGEM IPI-EXP"): [r"\bIPI[- ]?EXP\b"],
+    # Aceita IPI-EXP, IPI EXP, IPI/EXPORTACAO, IPI/EXP…
+    ("IMPOSTOS", "ORIGEM IPI-EXP"): [r"\bIPI[-/\s]?EXP"],
     ("IMPOSTOS", "ORIGEM ICMS"): [r"RECEBIMENTO DE ICMS", r"\bICMS\b"],
     ("IMPOSTOS", "ORIGEM FPM"): [r"FPE/FPM", r"\bFPM\b"],
 }
 
 DATE_RE = re.compile(r"^(\d{2}/\d{2}/\d{4})\b")
+# Extrato BB às vezes traz Dt.balancete + Dt.movimento no início da linha.
+DATE_MOVIMENTO_RE = re.compile(
+    r"^(\d{2}/\d{2}/\d{4})(?:\s+(\d{2}/\d{2}/\d{4}))?\b"
+)
 MONEY_RE = re.compile(r"(\d{1,3}(?:\.\d{3})*,\d{2})\s*[CD]?")
+# Linha só com valor monetário (quebra de coluna no PDF).
+MONEY_ONLY_RE = re.compile(
+    r"^\s*(\d{1,3}(?:\.\d{3})*,\d{2})\s*[CD]?\s*$"
+)
+# Linha só com indicador C/D (o "C" cai abaixo do valor no layout do BB).
+SINAL_ONLY_RE = re.compile(r"^\s*([CD])(?:\s+[CD])?\s*$", re.IGNORECASE)
 
 # Linhas de fechamento do extrato (saldo, total, subtotal) não são movimento:
 # importá-las duplicaria o valor já somado pelos lançamentos do período.
@@ -69,55 +80,126 @@ def extract_lines_from_pdf(file_bytes: bytes) -> list[str]:
     return lines
 
 
+def _parse_data_br(texto: str) -> Optional[date]:
+    try:
+        return datetime.strptime(texto, "%d/%m/%Y").date()
+    except ValueError:
+        return None
+
+
+def _data_da_linha(line: str) -> Optional[date]:
+    """Data efetiva do lançamento: prefere Dt.movimento quando houver duas datas."""
+    match = DATE_MOVIMENTO_RE.match(line)
+    if not match:
+        return None
+    # group(2) = data movimento; senão usa a primeira (balancete/única).
+    return _parse_data_br(match.group(2) or match.group(1))
+
+
+def _classificar_receita(texto: str) -> Optional[tuple[str, str]]:
+    for chave, padroes in RECEITA_BANK_PATTERNS.items():
+        if any(re.search(p, texto, flags=re.IGNORECASE) for p in padroes):
+            return chave
+    return None
+
+
+def _eh_credito(line: str, proxima: str = "") -> Optional[bool]:
+    """True=crédito, False=débito, None=sinal indefinido."""
+    fim = line.rstrip()
+    if fim.endswith(" D") or fim.endswith(" D D"):
+        return False
+    if fim.endswith(" C") or fim.endswith(" C C"):
+        return True
+    sinal = SINAL_ONLY_RE.match(proxima or "")
+    if sinal:
+        return sinal.group(1).upper() == "C"
+    return None
+
+
+def _valor_da_linha_receita(line: str, anterior: str = "", proxima: str = "") -> Optional[float]:
+    """Extrai valor do crédito, inclusive quando o PDF quebra valor/C em linhas vizinhas.
+
+    Layout comum do extrato BB:
+      1.344.034,59          ← valor sozinho na linha anterior
+      06/10/... ICMS 350    ← histórico sem valor
+      C                     ← sinal sozinho na linha seguinte
+
+    Quando a linha traz Valor e Saldo (dois monetários), usa o primeiro (coluna Valor).
+    """
+    valores = MONEY_RE.findall(line)
+    if valores:
+        # 1 valor = lançamento; 2+ = Valor + Saldo → fica com o Valor.
+        valor = parse_number(valores[0])
+        return valor if valor > 0 else None
+
+    # Sem valor na linha: só aceita vizinhos se o próximo for só C/D (quebra típica).
+    if not SINAL_ONLY_RE.match(proxima or ""):
+        return None
+
+    so_valor = MONEY_ONLY_RE.match(anterior or "")
+    if so_valor:
+        valor = parse_number(so_valor.group(1))
+        return valor if valor > 0 else None
+
+    # Às vezes o valor vem na própria linha seguinte junto do C: "1.234,56 C"
+    valores_prox = MONEY_RE.findall(proxima or "")
+    if valores_prox:
+        valor = parse_number(valores_prox[0])
+        return valor if valor > 0 else None
+
+    return None
+
+
 def datas_no_extrato(file_bytes: bytes) -> list[date]:
-    """Todas as datas encontradas no início das linhas do extrato."""
+    """Todas as datas de movimento encontradas no extrato."""
     encontradas: set[date] = set()
     for line in extract_lines_from_pdf(file_bytes):
-        match = DATE_RE.match(line)
-        if not match:
-            continue
-        try:
-            encontradas.add(datetime.strptime(match.group(1), "%d/%m/%Y").date())
-        except ValueError:
-            continue
+        dia = _data_da_linha(line)
+        if dia:
+            encontradas.add(dia)
     return sorted(encontradas)
 
 
 def receita_do_extrato(day: date, file_bytes: bytes, lines: Optional[list[str]] = None) -> list[dict]:
     """Monta as linhas de receita de um dia a partir do extrato bancário.
 
-    Considera apenas créditos: linhas terminadas em " D" (débito) são ignoradas.
-    O valor usado é o último número monetário da linha.
+    Considera apenas créditos. Trata quebras de layout do PDF em que o valor
+    fica na linha de cima e o "C" na linha de baixo.
     """
     if lines is None:
         lines = extract_lines_from_pdf(file_bytes)
     if not lines:
         return receita_template()
 
-    alvo = day.strftime("%d/%m/%Y")
     totais: dict[tuple[str, str], float] = {}
 
-    for line in lines:
-        match = DATE_RE.match(line)
-        if not match or match.group(1) != alvo:
-            continue
-        if line.rstrip().endswith(" D"):
+    for idx, line in enumerate(lines):
+        dia = _data_da_linha(line)
+        if dia != day:
             continue
         if eh_linha_de_fechamento(line):
             continue
 
-        valores = MONEY_RE.findall(line)
-        if not valores:
+        chave = _classificar_receita(line)
+        if not chave:
             continue
 
-        valor = parse_number(valores[-1])
-        if valor <= 0:
+        anterior = lines[idx - 1] if idx > 0 else ""
+        proxima = lines[idx + 1] if idx + 1 < len(lines) else ""
+
+        credito = _eh_credito(line, proxima)
+        if credito is False:
+            continue
+        if credito is None:
+            # Sem sinal explícito: mantém comportamento antigo (só ignora se terminar em D).
+            if line.rstrip().endswith(" D"):
+                continue
+
+        valor = _valor_da_linha_receita(line, anterior, proxima)
+        if valor is None or valor <= 0:
             continue
 
-        for chave, padroes in RECEITA_BANK_PATTERNS.items():
-            if any(re.search(p, line, flags=re.IGNORECASE) for p in padroes):
-                totais[chave] = totais.get(chave, 0.0) + valor
-                break
+        totais[chave] = totais.get(chave, 0.0) + valor
 
     if not totais:
         return receita_template()
