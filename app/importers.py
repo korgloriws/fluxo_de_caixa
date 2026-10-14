@@ -60,6 +60,30 @@ class ImportError_(Exception):
     """Falha tratável durante a leitura de um arquivo."""
 
 
+def pdf_tem_texto_selecionavel(file_bytes: bytes) -> bool:
+    """True se o PDF tem camada de texto (extrato do portal BB).
+
+    PDFs gerados por 'Microsoft Print to PDF' / digitalização costumam ser
+    só imagem — pdfplumber não lê valores e a importação falharia em silêncio.
+    """
+    try:
+        import pdfplumber
+    except ImportError:
+        return False
+
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        for page in pdf.pages:
+            if page.chars:
+                return True
+            try:
+                texto = page.extract_text(x_tolerance=2, y_tolerance=2) or ""
+            except Exception:
+                texto = page.extract_text() or ""
+            if texto.strip():
+                return True
+    return False
+
+
 def extract_lines_from_pdf(file_bytes: bytes) -> list[str]:
     try:
         import pdfplumber

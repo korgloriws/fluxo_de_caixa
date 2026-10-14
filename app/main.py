@@ -1147,6 +1147,17 @@ async def api_importar(request: Request, arquivos: list[UploadFile]):
 
 def _importar_pdf(nome: str, conteudo: bytes, liberados: list[str], usuario: dict) -> dict:
     login = usuario["login"]
+
+    # Print to PDF / scan = só imagem. Sem texto não há como ler ICMS/FPM etc.
+    # O fallback tabular antigo podia travar ou gravar lixo e zerar o dia.
+    if not importers.pdf_tem_texto_selecionavel(conteudo):
+        raise importers.ImportError_(
+            "Este PDF não tem texto selecionável (parece impressão ou captura de tela). "
+            "No portal do Banco do Brasil, use a opção de baixar/salvar o extrato em PDF "
+            "(arquivo com texto, como o Fundeb.pdf gerado pelo sistema do banco) — "
+            "não use 'Imprimir para PDF' do Windows. Nenhum dado foi alterado."
+        )
+
     linhas = importers.extract_lines_from_pdf(conteudo)
     dias = importers.datas_no_extrato(conteudo)
 
@@ -1178,6 +1189,13 @@ def _importar_pdf(nome: str, conteudo: bytes, liberados: list[str], usuario: dic
             gravados += 1
             atualizados.append(dia)
 
+        if gravados == 0 and not ignorados:
+            raise importers.ImportError_(
+                "O extrato foi lido, mas nenhum crédito de receita (ICMS, FPM, IPI-EXP, "
+                "IPVA, ITCMD, ITR) foi encontrado nos dias do arquivo. "
+                "Nenhum dado foi alterado."
+            )
+
         return {
             "resumo": {"tipo": "extrato bancário", "dias_gravados": gravados, "dias_detectados": len(dias)},
             "dias": atualizados,
@@ -1185,6 +1203,12 @@ def _importar_pdf(nome: str, conteudo: bytes, liberados: list[str], usuario: dic
         }
 
     registros = importers.parse_pdf_tabular(conteudo)
+    if not registros:
+        raise importers.ImportError_(
+            "Não foi possível ler lançamentos neste PDF. "
+            "Envie o extrato de conta corrente baixado pelo portal do BB. "
+            "Nenhum dado foi alterado."
+        )
     return _gravar_registros(nome, registros, liberados, usuario=usuario, origem=f"pdf-tabela:{login}")
 
 
