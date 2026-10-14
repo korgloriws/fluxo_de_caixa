@@ -81,7 +81,12 @@ def indicadores(start: date, end: date, **filtros) -> dict:
 
 
 def evolucao_diaria(start: date, end: date, **filtros) -> dict:
-    """Gráfico 1 — receita, despesa e saldo acumulado dia a dia."""
+    """Gráfico 1 — receita, despesa e saldo acumulado dia a dia.
+
+    Preenche todos os dias do intervalo (mesmo sem lançamento) para o gráfico
+    refletir a troca de período (hoje / semana / mês) em vez de só os dias
+    que têm movimento.
+    """
     where, params = _filtros(start, end, excluir_ajustes=True, **filtros)
 
     with connect() as conn:
@@ -96,22 +101,30 @@ def evolucao_diaria(start: date, end: date, **filtros) -> dict:
             params,
         ).fetchall()
 
-    saldo_inicial = saldo_inicial_do_dia(start)
+    por_dia = {
+        str(linha["data"])[:10]: (
+            float(linha["receita"]),
+            float(linha["despesa"]),
+        )
+        for linha in linhas
+    }
 
+    saldo_inicial = saldo_inicial_do_dia(start)
     pontos = []
-    for linha in linhas:
-        receita = float(linha["receita"])
-        despesa = float(linha["despesa"])
-        dia = date.fromisoformat(str(linha["data"])[:10])
+    dia = start
+    while dia <= end:
+        chave = dia.isoformat()
+        receita, despesa = por_dia.get(chave, (0.0, 0.0))
         pontos.append(
             {
-                "data": linha["data"],
+                "data": chave,
                 "receita": receita,
                 "despesa": despesa,
                 "saldo": receita - despesa,
                 "saldo_acumulado": saldo_acumulado_ate(dia),
             }
         )
+        dia += timedelta(days=1)
 
     return {"saldo_inicial": saldo_inicial, "pontos": pontos}
 

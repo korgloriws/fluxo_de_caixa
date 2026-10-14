@@ -311,9 +311,20 @@
 
   /* ==================== Painel ==================== */
 
+  let sequenciaPainel = 0;
+  let abortPainel = null;
+
   async function carregarPainel() {
+    const sequencia = ++sequenciaPainel;
+    if (abortPainel) abortPainel.abort();
+    abortPainel = typeof AbortController !== 'undefined' ? new AbortController() : null;
+
     try {
-      const dados = await requisitar('/api/painel?' + parametrosFiltro().toString());
+      const dados = await requisitar('/api/painel?' + parametrosFiltro().toString(), {
+        signal: abortPainel ? abortPainel.signal : undefined,
+      });
+      // Resposta atrasada de um filtro anterior — descarta.
+      if (sequencia !== sequenciaPainel) return;
       estado.dados = dados;
       $('#rotulo-periodo').textContent = dados.periodo.rotulo;
       renderizarKpis(dados.indicadores);
@@ -324,6 +335,8 @@
         carregarHistorico({ resetarPagina: true });
       }
     } catch (erro) {
+      if (erro && erro.name === 'AbortError') return;
+      if (sequencia !== sequenciaPainel) return;
       notificar(`Não foi possível carregar os dados: ${erro.message}`, 'erro');
     }
   }

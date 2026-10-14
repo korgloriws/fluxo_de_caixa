@@ -106,12 +106,12 @@
   <div class="container">
     <div class="filtros-linha">
       <div class="chips" id="chips-periodo" role="group" aria-label="Período">
-        <button class="chip" data-periodo="hoje">Hoje</button>
-        <button class="chip" data-periodo="semana">Semana</button>
-        <button class="chip ativo" data-periodo="mes">Mês</button>
-        <button class="chip" data-periodo="mes_anterior">Mês anterior</button>
-        <button class="chip" data-periodo="ano">Ano</button>
-        <button class="chip" data-periodo="personalizado">Personalizado</button>
+        <button type="button" class="chip" data-periodo="hoje" title="Somente o dia de hoje">Hoje</button>
+        <button type="button" class="chip" data-periodo="semana" title="Últimos 7 dias, incluindo hoje">Semana</button>
+        <button type="button" class="chip ativo" data-periodo="mes" title="Mês civil completo">Mês</button>
+        <button type="button" class="chip" data-periodo="mes_anterior" title="Mês civil anterior completo">Mês anterior</button>
+        <button type="button" class="chip" data-periodo="ano" title="Ano civil completo">Ano</button>
+        <button type="button" class="chip" data-periodo="personalizado" title="Escolha o intervalo">Personalizado</button>
       </div>
 
       <div id="periodo-personalizado">
@@ -891,5 +891,5 @@
 </script>
 <script src="{{ root_path }}/static/js/auth-ui.js?v=5"></script>
 <script src="{{ root_path }}/static/js/graficos.js"></script>
-<script src="{{ root_path }}/static/js/app.js?v=20"></script>
+<script src="{{ root_path }}/static/js/app.js?v=21"></script>
 {% endblock %}

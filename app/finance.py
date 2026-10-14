@@ -251,8 +251,9 @@ def resolve_period(periodo: str, base_day: date) -> tuple[date, date]:
         return base_day, base_day
 
     if periodo == "semana":
-        start = base_day - timedelta(days=base_day.weekday())
-        return start, start + timedelta(days=6)
+        # Últimos 7 dias (incluindo hoje) — mais intuitivo que a semana civil
+        # seg–dom, que frequentemente fica vazia no meio/fim do mês.
+        return base_day - timedelta(days=6), base_day
 
     if periodo == "mes":
         start = base_day.replace(day=1)
