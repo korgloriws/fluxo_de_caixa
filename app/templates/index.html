@@ -627,9 +627,9 @@
           <span class="importar-selo importar-selo--backup">Backup</span>
           <div class="cartao-titulo">Banco de dados</div>
           <div class="cartao-subtitulo">
-            Baixe o arquivo <code>.db</code> completo para guardar uma cópia.
-            Para restaurar, envie exatamente esse mesmo arquivo — a estrutura é a usada pelo sistema.
-            Somente o administrador. A restauração substitui todos os dados atuais.
+            Baixe o arquivo <code>.db</code> completo para guardar uma cópia,
+            restaure a partir de um backup ou zere os lançamentos para recomeçar.
+            Visível somente para o administrador.
           </div>
         </div>
       </div>
@@ -647,7 +647,8 @@
           <div class="backup-bloco">
             <div class="importar-arquivo-tipo">
               <strong>Restaurar backup</strong><br>
-              Arquivo aceito: <code>.db</code> gerado por este sistema
+              Arquivo aceito: <code>.db</code> gerado por este sistema.
+              Substitui todos os dados atuais (incluindo usuários).
             </div>
             <div class="campo">
               <label for="backup-arquivo">Arquivo .db</label>
@@ -659,6 +660,24 @@
             </div>
             <button class="btn btn-primario" type="button" id="btn-restaurar-backup">
               Restaurar banco
+            </button>
+          </div>
+          <div class="backup-bloco backup-bloco--perigo">
+            <div class="importar-arquivo-tipo">
+              <strong>Zerar banco</strong><br>
+              Apaga movimentos, previsões e histórico.
+              Mantém os usuários. Uma cópia automática é salva antes.
+            </div>
+            <div class="campo">
+              <label for="zerar-confirmacao">Digite <code>ZERAR</code> para confirmar</label>
+              <input type="text" id="zerar-confirmacao" class="entrada" autocomplete="off" placeholder="ZERAR">
+            </div>
+            <div class="campo">
+              <label for="zerar-senha">Confirme sua senha de administrador</label>
+              <input type="password" id="zerar-senha" class="entrada" autocomplete="current-password">
+            </div>
+            <button class="btn btn-perigo" type="button" id="btn-zerar-banco">
+              Zerar banco e começar de novo
             </button>
           </div>
         </div>

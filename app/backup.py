@@ -151,3 +151,59 @@ def restaurar_de_bytes(conteudo: bytes) -> dict:
     repository.init_db()
     info["ok"] = True
     return info
+
+
+def zerar_dados() -> dict:
+    """Apaga movimentos, histórico e previsões. Mantém usuários e o schema.
+
+    Antes de limpar, grava uma cópia automática em exports/ para recuperação.
+    """
+    destino = Path(get_db_path())
+    if not destino.exists():
+        raise BackupError("Banco de dados ainda não existe.")
+
+    checkpoint()
+    reserva = (
+        Path(get_exports_dir())
+        / f"fluxo_antes_zerar_{datetime.now():%Y%m%d_%H%M%S}.db"
+    )
+    Path(get_exports_dir()).mkdir(parents=True, exist_ok=True)
+    shutil.copy2(destino, reserva)
+
+    with repository.connect() as conn:
+        movimentos = int(conn.execute("SELECT COUNT(*) FROM movimentos").fetchone()[0])
+        try:
+            historico = int(conn.execute("SELECT COUNT(*) FROM historico").fetchone()[0])
+        except sqlite3.OperationalError:
+            historico = 0
+        try:
+            previsoes = int(
+                conn.execute("SELECT COUNT(*) FROM previsoes_mensais").fetchone()[0]
+            )
+        except sqlite3.OperationalError:
+            previsoes = 0
+
+        conn.execute("DELETE FROM movimentos")
+        try:
+            conn.execute("DELETE FROM historico")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("DELETE FROM previsoes_mensais")
+        except sqlite3.OperationalError:
+            pass
+        # Reinicia sequências dos IDs limpos (usuarios permanece).
+        for tabela in ("movimentos", "historico", "previsoes_mensais"):
+            try:
+                conn.execute("DELETE FROM sqlite_sequence WHERE name = ?", (tabela,))
+            except sqlite3.OperationalError:
+                pass
+
+    repository.init_db()
+    return {
+        "ok": True,
+        "movimentos_apagados": movimentos,
+        "historico_apagado": historico,
+        "previsoes_apagadas": previsoes,
+        "backup_anterior": reserva.name,
+    }

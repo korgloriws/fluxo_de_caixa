@@ -907,6 +907,37 @@ async def api_backup_restaurar(
     }
 
 
+@app.post("/api/backup/zerar")
+async def api_backup_zerar(
+    request: Request,
+    senha: str = Form(...),
+    confirmacao: str = Form(""),
+):
+    """Zera movimentos, histórico e previsões. Mantém cadastro de usuários."""
+    admin = exige_admin(request)
+    if not auth.confirmar_senha(admin["id"], senha):
+        raise HTTPException(status_code=401, detail="Senha incorreta.")
+    if (confirmacao or "").strip().upper() != "ZERAR":
+        raise HTTPException(
+            status_code=400,
+            detail='Digite ZERAR no campo de confirmação para prosseguir.',
+        )
+
+    try:
+        info = backup.zerar_dados()
+    except backup.BackupError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "ok": True,
+        "movimentos_apagados": info["movimentos_apagados"],
+        "historico_apagado": info["historico_apagado"],
+        "previsoes_apagadas": info["previsoes_apagadas"],
+        "backup_anterior": info.get("backup_anterior"),
+        "mensagem": "Dados operacionais apagados. Usuários preservados.",
+    }
+
+
 # ------------------------------------------------------------------
 # API — Extrato Banco do Brasil (consulta visual)
 # ------------------------------------------------------------------

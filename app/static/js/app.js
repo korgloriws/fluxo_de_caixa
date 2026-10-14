@@ -1426,6 +1426,62 @@
     }
   });
 
+  $('#btn-zerar-banco')?.addEventListener('click', async () => {
+    if (!(estado.usuario && estado.usuario.eh_admin)) {
+      notificar('Somente o administrador pode zerar o banco.', 'erro');
+      return;
+    }
+    const confirmacao = ($('#zerar-confirmacao')?.value || '').trim();
+    const senha = $('#zerar-senha')?.value || '';
+    if (confirmacao.toUpperCase() !== 'ZERAR') {
+      notificar('Digite ZERAR no campo de confirmação.', 'aviso');
+      $('#zerar-confirmacao')?.focus();
+      return;
+    }
+    if (!senha) {
+      notificar('Informe a senha de administrador para zerar.', 'aviso');
+      $('#zerar-senha')?.focus();
+      return;
+    }
+    if (
+      !confirm(
+        'Isso apaga TODOS os movimentos, previsões e o histórico.\nOs usuários serão mantidos.\n\nDeseja continuar?'
+      )
+    ) {
+      return;
+    }
+
+    const corpo = new FormData();
+    corpo.append('senha', senha);
+    corpo.append('confirmacao', confirmacao);
+
+    try {
+      const dados = await requisitar('/api/backup/zerar', { method: 'POST', body: corpo });
+      $('#resultado-backup').innerHTML = `
+        <div class="aviso aviso--liberado">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          <div class="aviso-conteudo">
+            <strong>Banco zerado</strong>
+            ${dados.movimentos_apagados} movimento(s),
+            ${dados.previsoes_apagadas} previsão(ões) e
+            ${dados.historico_apagado} registro(s) de histórico removidos.
+            ${dados.backup_anterior ? `Cópia automática: ${escapar(dados.backup_anterior)}.` : ''}
+            Usuários preservados — pode importar os PDFs/CSVs de novo.
+          </div>
+        </div>`;
+      notificar('Dados apagados. Sistema pronto para recomeçar.', 'sucesso');
+      $('#zerar-confirmacao').value = '';
+      $('#zerar-senha').value = '';
+      carregarPainel();
+      carregarDia(estado.diaAtual);
+    } catch (erro) {
+      notificar(erro.message, 'erro');
+      $('#zerar-senha')?.select();
+    }
+  });
+
   /* ==================== Ajuste de saldo ==================== */
 
   function renderizarAjustesDia(lista) {
