@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import analytics, auth, backup, bb_extrato, exporters, historico, importers, previsao, repository, sgp
+from . import analytics, auth, backup, bb_extrato, exporters, historico, importers, previsao, rendimentos, repository, sgp
 from .config import (
     APP_NAME,
     CATEGORIAS_DESPESA,
@@ -1107,8 +1107,9 @@ async def api_sgp_invocar(request: Request):
 async def api_importar(request: Request, arquivos: list[UploadFile]):
     usuario = exige_login(request)
     liberados = meses_liberados(request)
-    relatorio = {"processados": [], "ignorados": [], "erros": [], "dias": []}
+    relatorio = {"processados": [], "ignorados": [], "erros": [], "dias": [], "rendimentos": []}
     dias_afetados: set[date] = set()
+    snapshots: list[dict] = []
 
     for arquivo in arquivos:
         conteudo = await arquivo.read()
@@ -1140,6 +1141,19 @@ async def api_importar(request: Request, arquivos: list[UploadFile]):
         relatorio["processados"].append({"arquivo": nome, **resultado["resumo"]})
         relatorio["ignorados"].extend(resultado["ignorados"])
         dias_afetados.update(resultado["dias"])
+        if resultado.get("snapshot"):
+            snapshots.append(resultado["snapshot"])
+
+    if snapshots:
+        relatorio["rendimentos"] = rendimentos.processar_snapshots(
+            snapshots,
+            usuario=usuario,
+            origem=f"rendimentos:{usuario['login']}",
+            liberados=liberados,
+        )
+        for item in relatorio["rendimentos"]:
+            if item.get("lancado") and item.get("data_atual"):
+                dias_afetados.add(date.fromisoformat(str(item["data_atual"])[:10]))
 
     relatorio["dias"] = sorted(d.isoformat() for d in dias_afetados)
     return relatorio
@@ -1178,6 +1192,7 @@ def _importar_pdf(nome: str, conteudo: bytes, liberados: list[str], usuario: dic
                 continue
             origem = f"pdf-auto:{login}:{nome}"
             antes = repository.fetch_day(dia, "receita")
+            receitas = rendimentos.preservar_rendimentos(antes, receitas)
             repository.replace_day(dia, "receita", receitas, source=origem)
             historico.registrar(
                 acao="importar",
@@ -1191,17 +1206,24 @@ def _importar_pdf(nome: str, conteudo: bytes, liberados: list[str], usuario: dic
             gravados += 1
             atualizados.append(dia)
 
-        if gravados == 0 and not ignorados:
+        snapshot = rendimentos.extrair_snapshot_extrato(linhas)
+        if gravados == 0 and not ignorados and not snapshot:
             raise importers.ImportError_(
                 "O extrato foi lido, mas nenhum crédito de receita (ICMS, FPM, IPI-EXP, "
-                "IPVA, ITCMD, ITR) foi encontrado nos dias do arquivo. "
+                "IPVA, ITCMD, ITR) nem saldo de fundos foi encontrado. "
                 "Nenhum dado foi alterado."
             )
 
         return {
-            "resumo": {"tipo": "extrato bancário", "dias_gravados": gravados, "dias_detectados": len(dias)},
+            "resumo": {
+                "tipo": "extrato bancário",
+                "dias_gravados": gravados,
+                "dias_detectados": len(dias),
+                "saldo_fundos": bool(snapshot),
+            },
             "dias": atualizados,
             "ignorados": ignorados,
+            "snapshot": snapshot,
         }
 
     registros = importers.parse_pdf_tabular(conteudo)

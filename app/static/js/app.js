@@ -1241,8 +1241,12 @@
         renderizarResultadoImportacao(resultado, resultadoId);
 
         const totalDias = (resultado.dias || []).length;
-        if (totalDias) {
-          notificar(`${rotulo}: ${totalDias} dia(s) atualizado(s).`, 'sucesso');
+        const rendimentosLancados = (resultado.rendimentos || []).filter((r) => r.lancado).length;
+        if (totalDias || rendimentosLancados) {
+          const extra = rendimentosLancados
+            ? ` · ${rendimentosLancados} rendimento(s) lançado(s)`
+            : '';
+          notificar(`${rotulo}: ${totalDias} dia(s) atualizado(s)${extra}.`, 'sucesso');
           carregarPainel();
           carregarDia(estado.diaAtual);
         } else {
@@ -1328,6 +1332,31 @@
             <strong>${resultado.ignorados.length} dia(s) ignorado(s)</strong>
             Pertencem a meses encerrados. Libere o mês na aba Lançamentos e importe novamente.
           </div>
+        </div>`);
+    }
+
+    if (resultado.rendimentos && resultado.rendimentos.length) {
+      const blocos = resultado.rendimentos.map((item) => {
+        if (item.lancado) {
+          const fundos = (item.por_fundo || [])
+            .map(
+              (f) =>
+                `${escapar(f.fundo)}: ${fmtMoeda(f.rendimento)}`
+            )
+            .join('<br>');
+          return `<strong>Rendimento ${fmtData(item.data_anterior)} → ${fmtData(item.data_atual)}</strong>
+            ${fmtMoeda(item.rendimento_total)} lançado em RENDIMENTOS.
+            ${fundos ? `<div style="margin-top:4px;color:var(--texto-3)">${fundos}</div>` : ''}`;
+        }
+        return `<strong>Saldo de fundos em ${fmtData(item.data || item.data_atual)}</strong>
+          ${escapar(item.motivo || 'aguardando o extrato do dia anterior para calcular o rendimento.')}`;
+      });
+      partes.push(`
+        <div class="aviso aviso--liberado">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+          </svg>
+          <div class="aviso-conteudo">${blocos.join('<br><br>')}</div>
         </div>`);
     }
 
@@ -1716,6 +1745,7 @@
     restaurar: 'Restauração',
     ajuste_saldo: 'Ajuste de saldo',
     excluir_ajuste: 'Exclusão de ajuste',
+    rendimentos: 'Rendimentos',
   };
 
   let historicoAbertoId = null;

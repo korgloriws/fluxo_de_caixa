@@ -182,6 +182,10 @@ def zerar_dados() -> dict:
             )
         except sqlite3.OperationalError:
             previsoes = 0
+        try:
+            saldos = int(conn.execute("SELECT COUNT(*) FROM saldos_extrato").fetchone()[0])
+        except sqlite3.OperationalError:
+            saldos = 0
 
         conn.execute("DELETE FROM movimentos")
         try:
@@ -190,6 +194,10 @@ def zerar_dados() -> dict:
             pass
         try:
             conn.execute("DELETE FROM previsoes_mensais")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("DELETE FROM saldos_extrato")
         except sqlite3.OperationalError:
             pass
         # Reinicia sequências dos IDs limpos (usuarios permanece).

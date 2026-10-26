@@ -69,11 +69,12 @@ def init_db() -> None:
         # Registros antigos gravados pelo pandas guardaram a string literal "<NA>".
         conn.execute("UPDATE movimentos SET categoria = '' WHERE categoria = '<NA>'")
 
-    from . import auth, historico, previsao
+    from . import auth, historico, previsao, rendimentos
 
     auth.init_usuarios()
     historico.init_historico()
     previsao.init_previsoes()
+    rendimentos.init_saldos_extrato()
 
 
 CAMPOS_DETALHE_DESPESA = ("op", "nap", "processo", "ug", "nome_credor")
