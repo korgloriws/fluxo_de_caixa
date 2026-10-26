@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import date, datetime
+from pathlib import Path
 from typing import Optional
 
 from .finance import parse_number
@@ -190,13 +191,15 @@ def _row_to_snapshot(row) -> dict:
     data_ref = row["data"]
     if isinstance(data_ref, str):
         data_ref = date.fromisoformat(data_ref[:10])
+    keys = row.keys() if hasattr(row, "keys") else []
     return {
         "data": data_ref,
         "saldo_cc": float(row["saldo_cc"] or 0),
         "invest_resgate_auto": float(row["invest_resgate_auto"] or 0),
         "saldo_total": float(row["saldo_total"] or 0),
         "fundos": fundos,
-        "origem": row["origem"],
+        "origem": row["origem"] if "origem" in keys else None,
+        "atualizado_em": row["atualizado_em"] if "atualizado_em" in keys else None,
     }
 
 
@@ -266,6 +269,114 @@ def snapshot_anterior(dia: date) -> Optional[dict]:
             (dia.isoformat(),),
         ).fetchone()
     return _row_to_snapshot(row) if row else None
+
+
+def listar_snapshots() -> list[dict]:
+    """Todos os rodapés de extrato gravados, do mais antigo ao mais novo."""
+    init_saldos_extrato()
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT data, saldo_cc, invest_resgate_auto, saldo_total,
+                   fundos_json, origem, atualizado_em
+            FROM saldos_extrato
+            ORDER BY data ASC
+            """
+        ).fetchall()
+    return [_row_to_snapshot(row) for row in rows]
+
+
+def serie_rendimentos() -> dict:
+    """Monta a série dia a dia: rendimento só existe se houver extrato anterior."""
+    snaps = listar_snapshots()
+    linhas = []
+    total_conferido = 0.0
+    dias_conferidos = 0
+
+    for indice, atual in enumerate(snaps):
+        item = {
+            "data": atual["data"].isoformat() if isinstance(atual["data"], date) else atual["data"],
+            "saldo_cc": atual["saldo_cc"],
+            "invest_resgate_auto": atual["invest_resgate_auto"],
+            "saldo_total": atual["saldo_total"],
+            "fundos": dict(atual.get("fundos") or {}),
+            "origem": atual.get("origem") or "",
+            "atualizado_em": atual.get("atualizado_em") or "",
+            "conferido": False,
+            "data_anterior": None,
+            "intervalo_dias": None,
+            "rendimento_total": None,
+            "por_fundo": [],
+            "motivo": "Primeiro extrato da série — ainda não há dia anterior para conferir.",
+        }
+        if indice == 0:
+            linhas.append(item)
+            continue
+
+        anterior = snaps[indice - 1]
+        calculo = calcular_rendimento(anterior, atual)
+        data_ant = anterior["data"]
+        data_atu = atual["data"]
+        if isinstance(data_ant, date) and isinstance(data_atu, date):
+            intervalo = (data_atu - data_ant).days
+        else:
+            intervalo = None
+        item.update(
+            {
+                "conferido": True,
+                "data_anterior": calculo["data_anterior"].isoformat()
+                if isinstance(calculo["data_anterior"], date)
+                else calculo["data_anterior"],
+                "intervalo_dias": intervalo,
+                "rendimento_total": calculo["rendimento_total"],
+                "por_fundo": calculo["por_fundo"],
+                "motivo": None,
+            }
+        )
+        total_conferido += float(calculo["rendimento_total"] or 0)
+        dias_conferidos += 1
+        linhas.append(item)
+
+    return {
+        "extratos": len(snaps),
+        "dias_conferidos": dias_conferidos,
+        "rendimento_total": round(total_conferido, 2),
+        "linhas": linhas,
+    }
+
+
+def reler_uploads() -> dict:
+    """Reprocessa os PDFs já salvos em uploads/ e atualiza os snapshots."""
+    from .config import get_uploads_dir
+    from . import importers
+
+    pasta = Path(get_uploads_dir())
+    pasta.mkdir(parents=True, exist_ok=True)
+    pdfs = sorted(
+        [p for p in pasta.iterdir() if p.is_file() and p.suffix.lower() == ".pdf"],
+        key=lambda p: p.name,
+    )
+    lidos = 0
+    ignorados = []
+    for arquivo in pdfs:
+        try:
+            linhas = importers.extract_lines_from_pdf(
+                arquivo.read_bytes(), permitir_ocr=True
+            )
+            snapshot = extrair_snapshot_extrato(linhas)
+            if not snapshot or not snapshot.get("data"):
+                ignorados.append({"arquivo": arquivo.name, "motivo": "rodapé de fundos não encontrado"})
+                continue
+            salvar_snapshot(snapshot, origem=f"uploads:{arquivo.name}")
+            lidos += 1
+        except Exception as exc:
+            ignorados.append({"arquivo": arquivo.name, "motivo": str(exc)})
+
+    serie = serie_rendimentos()
+    serie["arquivos_lidos"] = lidos
+    serie["arquivos_total"] = len(pdfs)
+    serie["ignorados"] = ignorados
+    return serie
 
 
 def serializar_snapshot(snapshot: Optional[dict]) -> Optional[dict]:

@@ -645,6 +645,24 @@ async def api_salvar_previsao_mensal(request: Request):
 
 
 # ------------------------------------------------------------------
+# API — rendimentos (aba de conferência)
+# ------------------------------------------------------------------
+
+
+@app.get("/api/rendimentos")
+def api_rendimentos():
+    """Série de fundos extraída dos extratos importados — só calcula com dia anterior."""
+    return rendimentos.serie_rendimentos()
+
+
+@app.post("/api/rendimentos/reler-uploads")
+def api_rendimentos_reler(request: Request):
+    """Reprocessa os PDFs já salvos em uploads/ (teste da aba Rendimentos)."""
+    exige_login(request)
+    return rendimentos.reler_uploads()
+
+
+# ------------------------------------------------------------------
 # API — histórico de auditoria
 # ------------------------------------------------------------------
 

@@ -205,7 +205,7 @@
 
   /* ==================== Abas ==================== */
 
-  const ABAS_VALIDAS = new Set(['painel', 'lancamentos', 'movimentos', 'historico', 'importar']);
+  const ABAS_VALIDAS = new Set(['painel', 'lancamentos', 'movimentos', 'historico', 'rendimentos', 'importar']);
   const CHAVE_ABA = 'fundeb.abaAtiva';
 
   function ativarAba(nome, { persistir = true } = {}) {
@@ -227,6 +227,7 @@
 
     if (nome === 'painel') setTimeout(() => Graficos.redimensionar(), 60);
     if (nome === 'historico') carregarHistorico();
+    if (nome === 'rendimentos') carregarRendimentos();
   }
 
   function abaSalva() {
@@ -2048,6 +2049,126 @@
       if (resp.data) {
         $('#dia-edicao').value = resp.data;
         carregarDia(resp.data);
+      }
+    } catch (erro) {
+      notificar(erro.message, 'erro');
+    }
+  });
+
+  /* ==================== Rendimentos (aba teste) ==================== */
+
+  function fundoDoSnapshot(fundos, chave) {
+    const mapa = fundos || {};
+    if (mapa[chave] != null) return Number(mapa[chave] || 0);
+    const alvo = chave.replace(/\s+/g, '').toUpperCase();
+    for (const [nome, valor] of Object.entries(mapa)) {
+      if (String(nome).replace(/\s+/g, '').toUpperCase().includes(alvo.replace('BBRF', ''))) {
+        return Number(valor || 0);
+      }
+    }
+    if (chave.includes('SD')) {
+      const hit = Object.entries(mapa).find(([n]) => /SD/i.test(n) && /DIFERENC/i.test(n));
+      return hit ? Number(hit[1] || 0) : 0;
+    }
+    if (chave.includes('CP')) {
+      const hit = Object.entries(mapa).find(([n]) => /CP/i.test(n) && /AUTOM/i.test(n));
+      return hit ? Number(hit[1] || 0) : 0;
+    }
+    return 0;
+  }
+
+  function renderizarRendimentos(dados) {
+    const linhas = dados.linhas || [];
+    $('#rendimentos-status').textContent = dados.arquivos_total != null
+      ? `${dados.arquivos_lidos || 0} de ${dados.arquivos_total} PDF(s) da pasta lidos.`
+      : `${dados.extratos || 0} extrato(s) gravado(s) após importação.`;
+
+    const kpiQtd = (rotulo, numero, classe, rodape) => `
+      <div class="kpi ${classe}">
+        <div class="kpi-topo"><span class="kpi-rotulo">${rotulo}</span></div>
+        <div class="kpi-valor">${numero}</div>
+        <div class="kpi-rodape">${rodape}</div>
+      </div>`;
+    $('#kpis-rendimentos').innerHTML = [
+      kpiQtd('Extratos com rodapé', dados.extratos || 0, 'kpi--saldo', 'dias com PDF conferível'),
+      kpiQtd('Dias com rendimento', dados.dias_conferidos || 0, 'kpi--receita', 'só quando existe o dia anterior'),
+      cartaoKpi({
+        rotulo: 'Rendimento conferido',
+        valor: dados.rendimento_total || 0,
+        classe: 'kpi--roxo',
+        icone: ICONE_KPI.balanca,
+        corValor: (dados.rendimento_total || 0) >= 0 ? 'var(--verde)' : 'var(--vermelho)',
+        rodape: 'soma apenas dos dias conferidos',
+      }),
+    ].join('');
+
+    const corpo = $('#corpo-rendimentos');
+    if (!linhas.length) {
+      corpo.innerHTML = `<tr><td colspan="6">
+        <div class="vazio">
+          <strong>Nenhum extrato com saldo de fundos ainda</strong>
+          <p>Importe os PDFs na aba Importar ou clique em “Ler PDFs da pasta uploads”.</p>
+        </div></td></tr>`;
+      return;
+    }
+
+    corpo.innerHTML = linhas.map((linha) => {
+      const sd = fundoDoSnapshot(linha.fundos, 'BB RF SD Diferenciado');
+      const cp = fundoDoSnapshot(linha.fundos, 'BB RF CP Automatico');
+      const conferido = !!linha.conferido;
+      const intervalo = linha.intervalo_dias;
+      const avisoGap = conferido && intervalo > 1
+        ? ` intervalo de ${intervalo} dia(s)`
+        : '';
+      const situacao = conferido
+        ? `<span class="etiqueta etiqueta--receita">Conferido</span>${avisoGap ? `<div style="font-size:11px;color:var(--texto-3);margin-top:4px">${avisoGap}</div>` : ''}`
+        : `<span class="etiqueta etiqueta--neutra">Sem dia anterior</span>
+           <div style="font-size:11px;color:var(--texto-3);margin-top:4px">${escapar(linha.motivo || '')}</div>`;
+      const rendimento = conferido
+        ? `<strong class="${linha.rendimento_total >= 0 ? 'positivo' : 'negativo'}">${fmtMoeda(linha.rendimento_total)}</strong>`
+        : '<span style="color:var(--texto-3)">—</span>';
+      const anterior = conferido ? fmtData(linha.data_anterior) : '—';
+      const fundosDetalhe = conferido && linha.por_fundo && linha.por_fundo.length
+        ? linha.por_fundo.map((f) => `${escapar(f.fundo)} ${fmtMoeda(f.rendimento)}`).join('<br>')
+        : '';
+      return `<tr>
+        <td class="num">${fmtData(linha.data)}</td>
+        <td>${anterior}</td>
+        <td class="alinhado-direita num">${fmtMoeda(sd)}</td>
+        <td class="alinhado-direita num">${fmtMoeda(cp)}</td>
+        <td class="alinhado-direita num">
+          ${rendimento}
+          ${fundosDetalhe ? `<div style="font-size:11px;color:var(--texto-3);margin-top:4px">${fundosDetalhe}</div>` : ''}
+        </td>
+        <td>${situacao}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  async function carregarRendimentos() {
+    try {
+      const dados = await requisitar('/api/rendimentos');
+      renderizarRendimentos(dados);
+    } catch (erro) {
+      notificar(`Não foi possível carregar os rendimentos: ${erro.message}`, 'erro');
+    }
+  }
+
+  $('#btn-rendimentos-reler')?.addEventListener('click', async () => {
+    if (!estado.usuario) {
+      notificar('Faça login para reler os PDFs da pasta.', 'aviso');
+      AuthUI.abrirLogin();
+      return;
+    }
+    try {
+      notificar('Lendo PDFs em uploads/ — se houver arquivo de imagem, o OCR pode demorar.', 'info', 5000);
+      const dados = await requisitar('/api/rendimentos/reler-uploads', { method: 'POST' });
+      renderizarRendimentos(dados);
+      const ignorados = dados.ignorados || [];
+      if (ignorados.length) {
+        notificar(`${ignorados.length} arquivo(s) sem rodapé de fundos.`, 'aviso');
+      } else {
+        notificar('Pasta uploads relida.', 'sucesso');
       }
     } catch (erro) {
       notificar(erro.message, 'erro');
