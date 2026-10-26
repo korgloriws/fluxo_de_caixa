@@ -559,9 +559,9 @@
         <div>
           <div class="cartao-titulo">Rendimentos dos fundos</div>
           <div class="cartao-subtitulo">
-            Aba de teste. Usa o rodapé dos extratos já importados (ou os PDFs em
-            <code>uploads/</code>). O rendimento só aparece no dia que tem o extrato
-            imediatamente anterior para conferir — diferença dos fundos, não da conta corrente.
+            Aba de teste. Lê a mesma pasta em que os PDFs diários são gravados
+            (<code>uploads/</code>). Ao abrir, processa arquivos novos.
+            Rendimento só no dia que tiver o extrato anterior para conferir.
           </div>
         </div>
         <button class="btn btn-pequeno btn-primario" type="button" id="btn-rendimentos-reler">
@@ -939,5 +939,5 @@
 </script>
 <script src="{{ root_path }}/static/js/auth-ui.js?v=5"></script>
 <script src="{{ root_path }}/static/js/graficos.js"></script>
-<script src="{{ root_path }}/static/js/app.js?v=25"></script>
+<script src="{{ root_path }}/static/js/app.js?v=26"></script>
 {% endblock %}

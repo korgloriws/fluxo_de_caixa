@@ -181,6 +181,19 @@ def init_saldos_extrato() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS extratos_arquivos (
+                nome TEXT PRIMARY KEY,
+                tamanho INTEGER NOT NULL,
+                mtime REAL NOT NULL,
+                data_saldo DATE,
+                ok INTEGER NOT NULL DEFAULT 1,
+                motivo TEXT,
+                processado_em TIMESTAMP NOT NULL
+            )
+            """
+        )
 
 
 def _row_to_snapshot(row) -> dict:
@@ -337,46 +350,154 @@ def serie_rendimentos() -> dict:
         dias_conferidos += 1
         linhas.append(item)
 
+    pasta = info_pasta_uploads()
     return {
         "extratos": len(snaps),
         "dias_conferidos": dias_conferidos,
         "rendimento_total": round(total_conferido, 2),
         "linhas": linhas,
+        "pasta": pasta["pasta"],
+        "arquivos_total": pasta["pdfs"],
+        "pendentes": 0,
+        "arquivos_lidos": 0,
+        "ignorados": [],
     }
 
 
-def reler_uploads() -> dict:
-    """Reprocessa os PDFs já salvos em uploads/ e atualiza os snapshots."""
+def _pasta_uploads() -> Path:
     from .config import get_uploads_dir
-    from . import importers
 
     pasta = Path(get_uploads_dir())
     pasta.mkdir(parents=True, exist_ok=True)
-    pdfs = sorted(
+    return pasta
+
+
+def listar_pdfs_uploads() -> list[Path]:
+    pasta = _pasta_uploads()
+    return sorted(
         [p for p in pasta.iterdir() if p.is_file() and p.suffix.lower() == ".pdf"],
         key=lambda p: p.name,
     )
+
+
+def _arquivo_ja_processado(arquivo: Path) -> bool:
+    init_saldos_extrato()
+    try:
+        tamanho = arquivo.stat().st_size
+        mtime = arquivo.stat().st_mtime
+    except OSError:
+        return False
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT tamanho, mtime FROM extratos_arquivos WHERE nome = ?",
+            (arquivo.name,),
+        ).fetchone()
+    if not row:
+        return False
+    return int(row["tamanho"]) == int(tamanho) and abs(float(row["mtime"]) - float(mtime)) < 1
+
+
+def _marcar_arquivo(
+    arquivo: Path,
+    *,
+    data_saldo: Optional[date] = None,
+    ok: bool = True,
+    motivo: str = "",
+) -> None:
+    init_saldos_extrato()
+    try:
+        stat = arquivo.stat()
+        tamanho = stat.st_size
+        mtime = stat.st_mtime
+    except OSError:
+        return
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO extratos_arquivos (
+                nome, tamanho, mtime, data_saldo, ok, motivo, processado_em
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(nome) DO UPDATE SET
+                tamanho = excluded.tamanho,
+                mtime = excluded.mtime,
+                data_saldo = excluded.data_saldo,
+                ok = excluded.ok,
+                motivo = excluded.motivo,
+                processado_em = excluded.processado_em
+            """,
+            (
+                arquivo.name,
+                int(tamanho),
+                float(mtime),
+                data_saldo.isoformat() if isinstance(data_saldo, date) else data_saldo,
+                1 if ok else 0,
+                motivo or None,
+                datetime.now().isoformat(timespec="seconds"),
+            ),
+        )
+
+
+def registrar_upload(caminho: str, snapshot: Optional[dict] = None) -> None:
+    """Marca o PDF gravado na importação para a aba não reprocessar à toa."""
+    path = Path(caminho)
+    if not path.exists():
+        return
+    data_ref = (snapshot or {}).get("data")
+    _marcar_arquivo(path, data_saldo=data_ref, ok=bool(snapshot), motivo="" if snapshot else "sem rodapé")
+
+
+def info_pasta_uploads() -> dict:
+    pasta = _pasta_uploads()
+    pdfs = listar_pdfs_uploads()
+    return {
+        "pasta": str(pasta),
+        "pdfs": len(pdfs),
+        "arquivos": [p.name for p in pdfs],
+    }
+
+
+def sincronizar_uploads(*, forcar: bool = False, limite: int = 4) -> dict:
+    """Lê PDFs novos/alterados da pasta que recebe os uploads diários."""
+    from . import importers
+
+    pdfs = listar_pdfs_uploads()
+    pendentes = [p for p in pdfs if forcar or not _arquivo_ja_processado(p)]
     lidos = 0
     ignorados = []
-    for arquivo in pdfs:
+    for arquivo in pendentes[: max(1, limite) if not forcar else len(pendentes)]:
         try:
             linhas = importers.extract_lines_from_pdf(
                 arquivo.read_bytes(), permitir_ocr=True
             )
             snapshot = extrair_snapshot_extrato(linhas)
             if not snapshot or not snapshot.get("data"):
-                ignorados.append({"arquivo": arquivo.name, "motivo": "rodapé de fundos não encontrado"})
+                motivo = "rodapé de fundos não encontrado"
+                ignorados.append({"arquivo": arquivo.name, "motivo": motivo})
+                _marcar_arquivo(arquivo, ok=False, motivo=motivo)
                 continue
             salvar_snapshot(snapshot, origem=f"uploads:{arquivo.name}")
+            _marcar_arquivo(arquivo, data_saldo=snapshot["data"], ok=True)
             lidos += 1
         except Exception as exc:
             ignorados.append({"arquivo": arquivo.name, "motivo": str(exc)})
 
+    restantes = max(0, len(pendentes) - (lidos + len(ignorados))) if not forcar else 0
+    if forcar:
+        restantes = 0
+
     serie = serie_rendimentos()
+    pasta = info_pasta_uploads()
+    serie["pasta"] = pasta["pasta"]
+    serie["arquivos_total"] = pasta["pdfs"]
     serie["arquivos_lidos"] = lidos
-    serie["arquivos_total"] = len(pdfs)
+    serie["pendentes"] = restantes
     serie["ignorados"] = ignorados
     return serie
+
+
+def reler_uploads() -> dict:
+    """Reprocessa todos os PDFs da pasta de uploads."""
+    return sincronizar_uploads(forcar=True, limite=500)
 
 
 def serializar_snapshot(snapshot: Optional[dict]) -> Optional[dict]:

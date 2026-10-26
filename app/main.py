@@ -650,8 +650,10 @@ async def api_salvar_previsao_mensal(request: Request):
 
 
 @app.get("/api/rendimentos")
-def api_rendimentos():
-    """Série de fundos extraída dos extratos importados — só calcula com dia anterior."""
+def api_rendimentos(sincronizar: bool = Query(True)):
+    """Série a partir da pasta de uploads diários (PDFs novos entram na conferência)."""
+    if sincronizar:
+        return rendimentos.sincronizar_uploads(forcar=False, limite=3)
     return rendimentos.serie_rendimentos()
 
 
@@ -1161,6 +1163,8 @@ async def api_importar(request: Request, arquivos: list[UploadFile]):
         dias_afetados.update(resultado["dias"])
         if resultado.get("snapshot"):
             snapshots.append(resultado["snapshot"])
+        if nome.lower().endswith(".pdf") and os.path.exists(destino):
+            rendimentos.registrar_upload(destino, resultado.get("snapshot"))
 
     if snapshots:
         relatorio["rendimentos"] = rendimentos.processar_snapshots(

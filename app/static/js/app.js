@@ -2079,9 +2079,14 @@
 
   function renderizarRendimentos(dados) {
     const linhas = dados.linhas || [];
-    $('#rendimentos-status').textContent = dados.arquivos_total != null
-      ? `${dados.arquivos_lidos || 0} de ${dados.arquivos_total} PDF(s) da pasta lidos.`
-      : `${dados.extratos || 0} extrato(s) gravado(s) após importação.`;
+    const pasta = dados.pasta || 'uploads/';
+    const totalPasta = dados.arquivos_total || 0;
+    const pendentes = dados.pendentes || 0;
+    const lidosAgora = dados.arquivos_lidos || 0;
+    let status = `Pasta de produção: ${pasta} · ${totalPasta} PDF(s) salvos.`;
+    if (lidosAgora) status += ` · ${lidosAgora} arquivo(s) lido(s) agora.`;
+    if (pendentes) status += ` · ainda ${pendentes} para processar…`;
+    $('#rendimentos-status').textContent = status;
 
     const kpiQtd = (rotulo, numero, classe, rodape) => `
       <div class="kpi ${classe}">
@@ -2090,8 +2095,9 @@
         <div class="kpi-rodape">${rodape}</div>
       </div>`;
     $('#kpis-rendimentos').innerHTML = [
-      kpiQtd('Extratos com rodapé', dados.extratos || 0, 'kpi--saldo', 'dias com PDF conferível'),
-      kpiQtd('Dias com rendimento', dados.dias_conferidos || 0, 'kpi--receita', 'só quando existe o dia anterior'),
+      kpiQtd('PDFs na pasta', dados.arquivos_total || 0, 'kpi--saldo', 'uploads/ diário'),
+      kpiQtd('Dias com rodapé', dados.extratos || 0, 'kpi--saldo', 'extratos lidos'),
+      kpiQtd('Dias com rendimento', dados.dias_conferidos || 0, 'kpi--receita', 'só com o dia anterior'),
       cartaoKpi({
         rotulo: 'Rendimento conferido',
         valor: dados.rendimento_total || 0,
@@ -2145,12 +2151,21 @@
     }).join('');
   }
 
+  let lendoRendimentos = false;
   async function carregarRendimentos() {
+    if (lendoRendimentos) return;
+    lendoRendimentos = true;
     try {
-      const dados = await requisitar('/api/rendimentos');
+      let dados = await requisitar('/api/rendimentos?sincronizar=true');
       renderizarRendimentos(dados);
+      while ((dados.pendentes || 0) > 0) {
+        dados = await requisitar('/api/rendimentos?sincronizar=true');
+        renderizarRendimentos(dados);
+      }
     } catch (erro) {
       notificar(`Não foi possível carregar os rendimentos: ${erro.message}`, 'erro');
+    } finally {
+      lendoRendimentos = false;
     }
   }
 
