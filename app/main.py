@@ -650,8 +650,8 @@ async def api_salvar_previsao_mensal(request: Request):
 
 
 @app.get("/api/rendimentos")
-def api_rendimentos(sincronizar: bool = Query(True)):
-    """Série a partir da pasta de uploads diários (PDFs novos entram na conferência)."""
+def api_rendimentos(sincronizar: bool = Query(False)):
+    """Série a partir do livro (receitas/despesas já importadas)."""
     if sincronizar:
         return rendimentos.sincronizar_uploads(forcar=False, limite=3)
     return rendimentos.serie_rendimentos()

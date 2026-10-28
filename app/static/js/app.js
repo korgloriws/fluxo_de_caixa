@@ -2057,14 +2057,9 @@
 
   function renderizarRendimentos(dados) {
     const linhas = dados.linhas || [];
-    const pasta = dados.pasta || 'uploads/';
-    const totalPasta = dados.arquivos_total || 0;
-    const pendentes = dados.pendentes || 0;
-    const lidosAgora = dados.arquivos_lidos || 0;
-    let status = `Pasta de produção: ${pasta} · ${totalPasta} PDF(s) salvos.`;
-    if (lidosAgora) status += ` · ${lidosAgora} arquivo(s) lido(s) agora.`;
-    if (pendentes) status += ` · ainda ${pendentes} para processar…`;
-    $('#rendimentos-status').textContent = status;
+    const diasLivro = dados.dias_livro || linhas.length;
+    $('#rendimentos-status').textContent =
+      'Cálculo pelo livro de caixa (receitas e despesas já importadas). A aba não abre os arquivos.';
 
     const kpiQtd = (rotulo, numero, classe, rodape) => `
       <div class="kpi ${classe}">
@@ -2073,9 +2068,8 @@
         <div class="kpi-rodape">${rodape}</div>
       </div>`;
     $('#kpis-rendimentos').innerHTML = [
-      kpiQtd('PDFs na pasta', dados.arquivos_total || 0, 'kpi--saldo', 'uploads/ diário'),
-      kpiQtd('Dias com rodapé', dados.extratos || 0, 'kpi--saldo', 'extratos lidos'),
-      kpiQtd('Intervalos conferidos', dados.dias_conferidos || 0, 'kpi--receita', 'com saldo anterior'),
+      kpiQtd('Dias no livro', diasLivro, 'kpi--saldo', 'com receita ou despesa'),
+      kpiQtd('Dias conferidos', dados.dias_conferidos || 0, 'kpi--receita', 'com saldo anterior e final'),
       cartaoKpi({
         rotulo: 'Rendimento conferido',
         valor: dados.rendimento_total || 0,
@@ -2090,43 +2084,44 @@
     if (!linhas.length) {
       corpo.innerHTML = `<tr><td colspan="9">
         <div class="vazio">
-          <strong>Nenhum extrato com saldo de fundos ainda</strong>
-          <p>Importe os PDFs na aba Importar ou clique em “Ler PDFs da pasta uploads”.</p>
+          <strong>Nenhum lançamento no livro ainda</strong>
+          <p>Importe os arquivos de receita e despesa na aba Importar. O rendimento usa esses valores.</p>
         </div></td></tr>`;
       return;
     }
 
-    const celula = (valor, conferido) =>
-      conferido
+    const temNumero = (valor) => valor !== null && valor !== undefined;
+    const celula = (valor) =>
+      temNumero(valor)
         ? `<td class="alinhado-direita num">${fmtMoeda(valor)}</td>`
         : '<td class="alinhado-direita" style="color:var(--texto-3)">—</td>';
 
     corpo.innerHTML = linhas.map((linha) => {
       const conferido = !!linha.conferido;
       const intervalo = linha.intervalo_dias;
-      const semMovimento = conferido && !linha.creditos && !linha.despesas;
+      const semMovimento = !linha.creditos && !linha.despesas;
       const avisoGap = conferido && intervalo > 1
         ? `intervalo de ${intervalo} dia(s)`
         : '';
       const avisoImp = semMovimento
-        ? 'sem crédito/despesa importados neste intervalo'
+        ? 'sem crédito/despesa neste dia'
         : '';
       const situacao = conferido
         ? `<span class="etiqueta etiqueta--receita">Conferido</span>
            ${avisoGap || avisoImp ? `<div style="font-size:11px;color:var(--texto-3);margin-top:4px">${[avisoGap, avisoImp].filter(Boolean).join(' · ')}</div>` : ''}`
-        : `<span class="etiqueta etiqueta--neutra">Sem dia anterior</span>
+        : `<span class="etiqueta etiqueta--neutra">Livro</span>
            <div style="font-size:11px;color:var(--texto-3);margin-top:4px">${escapar(linha.motivo || '')}</div>`;
       const rendimento = conferido
         ? `<strong class="${linha.rendimento_total >= 0 ? 'positivo' : 'negativo'}">${fmtMoeda(linha.rendimento_total)}</strong>`
         : '<span style="color:var(--texto-3)">—</span>';
       return `<tr>
         <td class="num">${fmtData(linha.data)}</td>
-        <td>${conferido ? fmtData(linha.data_anterior) : '—'}</td>
-        ${celula(linha.saldo_anterior, conferido)}
-        ${celula(linha.creditos, conferido)}
-        ${celula(linha.despesas, conferido)}
-        ${celula(linha.saldo_esperado, conferido)}
-        <td class="alinhado-direita num">${fmtMoeda(linha.saldo_final)}</td>
+        <td>${linha.data_anterior ? fmtData(linha.data_anterior) : '—'}</td>
+        ${celula(linha.saldo_anterior)}
+        ${celula(linha.creditos)}
+        ${celula(linha.despesas)}
+        ${celula(linha.saldo_esperado)}
+        ${celula(linha.saldo_final)}
         <td class="alinhado-direita num">${rendimento}</td>
         <td>${situacao}</td>
       </tr>`;
@@ -2135,41 +2130,23 @@
 
   let lendoRendimentos = false;
   async function carregarRendimentos() {
-    if (lendoRendimentos) return;
+    if (lendoRendimentos) return null;
     lendoRendimentos = true;
     try {
-      let dados = await requisitar('/api/rendimentos?sincronizar=true');
+      const dados = await requisitar('/api/rendimentos');
       renderizarRendimentos(dados);
-      while ((dados.pendentes || 0) > 0) {
-        dados = await requisitar('/api/rendimentos?sincronizar=true');
-        renderizarRendimentos(dados);
-      }
+      return dados;
     } catch (erro) {
       notificar(`Não foi possível carregar os rendimentos: ${erro.message}`, 'erro');
+      return null;
     } finally {
       lendoRendimentos = false;
     }
   }
 
   $('#btn-rendimentos-reler')?.addEventListener('click', async () => {
-    if (!estado.usuario) {
-      notificar('Faça login para reler os PDFs da pasta.', 'aviso');
-      AuthUI.abrirLogin();
-      return;
-    }
-    try {
-      notificar('Lendo PDFs em uploads/ — se houver arquivo de imagem, o OCR pode demorar.', 'info', 5000);
-      const dados = await requisitar('/api/rendimentos/reler-uploads', { method: 'POST' });
-      renderizarRendimentos(dados);
-      const ignorados = dados.ignorados || [];
-      if (ignorados.length) {
-        notificar(`${ignorados.length} arquivo(s) sem rodapé de fundos.`, 'aviso');
-      } else {
-        notificar('Pasta uploads relida.', 'sucesso');
-      }
-    } catch (erro) {
-      notificar(erro.message, 'erro');
-    }
+    const dados = await carregarRendimentos();
+    if (dados) notificar('Cálculo atualizado com os lançamentos do sistema.', 'sucesso');
   });
 
   /* ==================== Exportação ==================== */
