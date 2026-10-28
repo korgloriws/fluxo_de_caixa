@@ -1339,15 +1339,13 @@
     if (resultado.rendimentos && resultado.rendimentos.length) {
       const blocos = resultado.rendimentos.map((item) => {
         if (item.lancado) {
-          const fundos = (item.por_fundo || [])
-            .map(
-              (f) =>
-                `${escapar(f.fundo)}: ${fmtMoeda(f.rendimento)}`
-            )
-            .join('<br>');
           return `<strong>Rendimento ${fmtData(item.data_anterior)} → ${fmtData(item.data_atual)}</strong>
             ${fmtMoeda(item.rendimento_total)} lançado em RENDIMENTOS.
-            ${fundos ? `<div style="margin-top:4px;color:var(--texto-3)">${fundos}</div>` : ''}`;
+            <div style="margin-top:4px;color:var(--texto-3)">
+              anterior ${fmtMoeda(item.saldo_anterior)} + créditos ${fmtMoeda(item.creditos)}
+              − despesas ${fmtMoeda(item.despesas)} = esperado ${fmtMoeda(item.saldo_esperado)}
+              · final ${fmtMoeda(item.saldo_final)}
+            </div>`;
         }
         return `<strong>Saldo de fundos em ${fmtData(item.data || item.data_atual)}</strong>
           ${escapar(item.motivo || 'aguardando o extrato do dia anterior para calcular o rendimento.')}`;
@@ -2057,26 +2055,6 @@
 
   /* ==================== Rendimentos (aba teste) ==================== */
 
-  function fundoDoSnapshot(fundos, chave) {
-    const mapa = fundos || {};
-    if (mapa[chave] != null) return Number(mapa[chave] || 0);
-    const alvo = chave.replace(/\s+/g, '').toUpperCase();
-    for (const [nome, valor] of Object.entries(mapa)) {
-      if (String(nome).replace(/\s+/g, '').toUpperCase().includes(alvo.replace('BBRF', ''))) {
-        return Number(valor || 0);
-      }
-    }
-    if (chave.includes('SD')) {
-      const hit = Object.entries(mapa).find(([n]) => /SD/i.test(n) && /DIFERENC/i.test(n));
-      return hit ? Number(hit[1] || 0) : 0;
-    }
-    if (chave.includes('CP')) {
-      const hit = Object.entries(mapa).find(([n]) => /CP/i.test(n) && /AUTOM/i.test(n));
-      return hit ? Number(hit[1] || 0) : 0;
-    }
-    return 0;
-  }
-
   function renderizarRendimentos(dados) {
     const linhas = dados.linhas || [];
     const pasta = dados.pasta || 'uploads/';
@@ -2097,7 +2075,7 @@
     $('#kpis-rendimentos').innerHTML = [
       kpiQtd('PDFs na pasta', dados.arquivos_total || 0, 'kpi--saldo', 'uploads/ diário'),
       kpiQtd('Dias com rodapé', dados.extratos || 0, 'kpi--saldo', 'extratos lidos'),
-      kpiQtd('Dias com rendimento', dados.dias_conferidos || 0, 'kpi--receita', 'só com o dia anterior'),
+      kpiQtd('Intervalos conferidos', dados.dias_conferidos || 0, 'kpi--receita', 'com saldo anterior'),
       cartaoKpi({
         rotulo: 'Rendimento conferido',
         valor: dados.rendimento_total || 0,
@@ -2110,7 +2088,7 @@
 
     const corpo = $('#corpo-rendimentos');
     if (!linhas.length) {
-      corpo.innerHTML = `<tr><td colspan="6">
+      corpo.innerHTML = `<tr><td colspan="9">
         <div class="vazio">
           <strong>Nenhum extrato com saldo de fundos ainda</strong>
           <p>Importe os PDFs na aba Importar ou clique em “Ler PDFs da pasta uploads”.</p>
@@ -2118,34 +2096,38 @@
       return;
     }
 
+    const celula = (valor, conferido) =>
+      conferido
+        ? `<td class="alinhado-direita num">${fmtMoeda(valor)}</td>`
+        : '<td class="alinhado-direita" style="color:var(--texto-3)">—</td>';
+
     corpo.innerHTML = linhas.map((linha) => {
-      const sd = fundoDoSnapshot(linha.fundos, 'BB RF SD Diferenciado');
-      const cp = fundoDoSnapshot(linha.fundos, 'BB RF CP Automatico');
       const conferido = !!linha.conferido;
       const intervalo = linha.intervalo_dias;
+      const semMovimento = conferido && !linha.creditos && !linha.despesas;
       const avisoGap = conferido && intervalo > 1
-        ? ` intervalo de ${intervalo} dia(s)`
+        ? `intervalo de ${intervalo} dia(s)`
+        : '';
+      const avisoImp = semMovimento
+        ? 'sem crédito/despesa importados neste intervalo'
         : '';
       const situacao = conferido
-        ? `<span class="etiqueta etiqueta--receita">Conferido</span>${avisoGap ? `<div style="font-size:11px;color:var(--texto-3);margin-top:4px">${avisoGap}</div>` : ''}`
+        ? `<span class="etiqueta etiqueta--receita">Conferido</span>
+           ${avisoGap || avisoImp ? `<div style="font-size:11px;color:var(--texto-3);margin-top:4px">${[avisoGap, avisoImp].filter(Boolean).join(' · ')}</div>` : ''}`
         : `<span class="etiqueta etiqueta--neutra">Sem dia anterior</span>
            <div style="font-size:11px;color:var(--texto-3);margin-top:4px">${escapar(linha.motivo || '')}</div>`;
       const rendimento = conferido
         ? `<strong class="${linha.rendimento_total >= 0 ? 'positivo' : 'negativo'}">${fmtMoeda(linha.rendimento_total)}</strong>`
         : '<span style="color:var(--texto-3)">—</span>';
-      const anterior = conferido ? fmtData(linha.data_anterior) : '—';
-      const fundosDetalhe = conferido && linha.por_fundo && linha.por_fundo.length
-        ? linha.por_fundo.map((f) => `${escapar(f.fundo)} ${fmtMoeda(f.rendimento)}`).join('<br>')
-        : '';
       return `<tr>
         <td class="num">${fmtData(linha.data)}</td>
-        <td>${anterior}</td>
-        <td class="alinhado-direita num">${fmtMoeda(sd)}</td>
-        <td class="alinhado-direita num">${fmtMoeda(cp)}</td>
-        <td class="alinhado-direita num">
-          ${rendimento}
-          ${fundosDetalhe ? `<div style="font-size:11px;color:var(--texto-3);margin-top:4px">${fundosDetalhe}</div>` : ''}
-        </td>
+        <td>${conferido ? fmtData(linha.data_anterior) : '—'}</td>
+        ${celula(linha.saldo_anterior, conferido)}
+        ${celula(linha.creditos, conferido)}
+        ${celula(linha.despesas, conferido)}
+        ${celula(linha.saldo_esperado, conferido)}
+        <td class="alinhado-direita num">${fmtMoeda(linha.saldo_final)}</td>
+        <td class="alinhado-direita num">${rendimento}</td>
         <td>${situacao}</td>
       </tr>`;
     }).join('');

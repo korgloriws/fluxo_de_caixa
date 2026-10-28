@@ -559,9 +559,9 @@
         <div>
           <div class="cartao-titulo">Rendimentos dos fundos</div>
           <div class="cartao-subtitulo">
-            Aba de teste. Lê a mesma pasta em que os PDFs diários são gravados
-            (<code>uploads/</code>). Ao abrir, processa arquivos novos.
-            Rendimento só no dia que tiver o extrato anterior para conferir.
+            Aba de teste. Fórmula:
+            <strong>rendimento = saldo final − (saldo anterior + créditos − despesas)</strong>.
+            Saldos vêm do rodapé do extrato (CC + fundos). Créditos e despesas vêm dos arquivos importados no intervalo — funciona com PDF de vários dias.
           </div>
         </div>
         <button class="btn btn-pequeno btn-primario" type="button" id="btn-rendimentos-reler">
@@ -575,11 +575,14 @@
           <table class="movimentos-tabela" id="tabela-rendimentos">
             <thead>
               <tr>
-                <th>Dia</th>
-                <th>Conferido com</th>
-                <th class="alinhado-direita">BB RF SD Diferenciado</th>
-                <th class="alinhado-direita">BB RF CP Automático</th>
-                <th class="alinhado-direita">Rendimento do dia</th>
+                <th>Até</th>
+                <th>Desde</th>
+                <th class="alinhado-direita">Saldo anterior</th>
+                <th class="alinhado-direita">(+) Créditos</th>
+                <th class="alinhado-direita">(−) Despesas</th>
+                <th class="alinhado-direita">(=) Esperado</th>
+                <th class="alinhado-direita">Saldo final</th>
+                <th class="alinhado-direita">Rendimento</th>
                 <th>Situação</th>
               </tr>
             </thead>
@@ -939,5 +942,5 @@
 </script>
 <script src="{{ root_path }}/static/js/auth-ui.js?v=5"></script>
 <script src="{{ root_path }}/static/js/graficos.js"></script>
-<script src="{{ root_path }}/static/js/app.js?v=26"></script>
+<script src="{{ root_path }}/static/js/app.js?v=27"></script>
 {% endblock %}
