@@ -561,7 +561,7 @@
           <div class="cartao-subtitulo">
             Aba de teste. Fórmula:
             <strong>rendimento = saldo final − (saldo anterior + créditos − despesas)</strong>.
-            Saldo anterior, créditos e despesas vêm do que já está no sistema (arquivos de receita e despesa). Esta aba não relê o PDF.
+            Só confere entre dias com saldo de extrato. Créditos/despesas vêm do livro (sem resgate, aplicação nem OUTROS de ajuste).
           </div>
         </div>
         <button class="btn btn-pequeno btn-primario" type="button" id="btn-rendimentos-reler">
@@ -942,5 +942,5 @@
 </script>
 <script src="{{ root_path }}/static/js/auth-ui.js?v=5"></script>
 <script src="{{ root_path }}/static/js/graficos.js"></script>
-<script src="{{ root_path }}/static/js/app.js?v=28"></script>
+<script src="{{ root_path }}/static/js/app.js?v=29"></script>
 {% endblock %}

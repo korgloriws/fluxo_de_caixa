@@ -4,10 +4,10 @@ Fórmula usada na conferência manual:
     saldo esperado = saldo anterior + créditos − despesas
     rendimento     = saldo final − saldo esperado
 
-Créditos e despesas vêm dos lançamentos importados (receita/despesa), sem
-contar a categoria RENDIMENTOS nem ajuste de saldo. O saldo anterior caminha
-no próprio livro. O saldo final observado é o fechamento gravado na importação
-do extrato — a aba não relê o PDF.
+A conferência só ocorre entre dias que já têm saldo de extrato gravado.
+Créditos e despesas vêm dos lançamentos importados no intervalo, sem
+RENDIMENTOS, ajuste de saldo, resgate/aplicação de fundo nem OUTROS de
+correção (valor negativo ou linha Editável).
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from .finance import parse_number
-from .repository import AJUSTE_SOURCE_LIKE, connect
+from .finance import clean_text, parse_number
+from .repository import connect
 
 FUNDO_SD = "BB RF SD Diferenciado"
 FUNDO_CP = "BB RF CP Automatico"
@@ -150,27 +150,12 @@ def patrimonio(snapshot: dict) -> float:
     return round(cc + auto + extra, 2)
 
 
-def totais_operacionais(inicio: date, fim: date) -> dict:
-    """Créditos e despesas importados no intervalo, sem rendimento nem ajuste."""
-    from . import repository
-    from .finance import clean_text
-
-    if inicio > fim:
-        return {"creditos": 0.0, "despesas": 0.0}
-
-    creditos = 0.0
-    despesas = 0.0
-    for mov in repository.fetch_movimentos(inicio, fim):
-        if mov.get("ajuste_saldo"):
-            continue
-        if clean_text(mov.get("categoria")).upper() == "RENDIMENTOS":
-            continue
-        valor = float(mov.get("realizada") or 0.0)
-        if mov.get("tipo") == "receita":
-            creditos += valor
-        elif mov.get("tipo") == "despesa":
-            despesas += valor
-    return {"creditos": round(creditos, 2), "despesas": round(despesas, 2)}
+RE_TRANSFERENCIA_FUNDO = re.compile(
+    r"\b(resgate|aplica[cç][aã]o|aplicacao)\b|"
+    r"resgate\s+fundo|fundo\s+para\s+cobrir|"
+    r"aplica[cç][aã]o\s+em\s+fundo|aplicacao\s+em\s+fundo",
+    re.IGNORECASE,
+)
 
 
 def _as_date(valor) -> Optional[date]:
@@ -186,99 +171,55 @@ def _as_date(valor) -> Optional[date]:
     return None
 
 
-def _efeito_ajuste_row(row) -> float:
-    valor = float(row["valor2"] or 0.0)
-    return -valor if row["tipo"] == "despesa" else valor
+def movimento_entra_no_rendimento(mov: dict) -> bool:
+    """True se o lançamento é crédito/despesa operacional da conferência."""
+    if mov.get("ajuste_saldo"):
+        return False
+
+    categoria = clean_text(mov.get("categoria")).upper()
+    descricao = clean_text(mov.get("descricao"))
+    valor = float(mov.get("realizada") or 0.0)
+
+    if categoria == "RENDIMENTOS":
+        return False
+    if abs(valor) < 0.005:
+        return False
+    # OUTROS (resgate, Editável, ajuste manual) não entra na conferência.
+    if categoria == "OUTROS":
+        return False
+    if RE_TRANSFERENCIA_FUNDO.search(descricao):
+        return False
+    # Crédito negativo distorce a fórmula (vira “rendimento” artificial).
+    if mov.get("tipo") == "receita" and valor < 0:
+        return False
+    return True
 
 
-def saldo_operacional_ate(day: date) -> float:
-    """Saldo do livro até a data, sem categoria RENDIMENTOS."""
-    extra = "AND UPPER(COALESCE(categoria, '')) <> 'RENDIMENTOS'"
-    with connect() as conn:
-        ajuste = conn.execute(
-            """
-            SELECT data, tipo, valor2
-            FROM movimentos
-            WHERE data <= ? AND source LIKE ?
-            ORDER BY data DESC, id DESC
-            LIMIT 1
-            """,
-            (day.isoformat(), AJUSTE_SOURCE_LIKE),
-        ).fetchone()
-
-        if not ajuste:
-            row = conn.execute(
-                f"""
-                SELECT COALESCE(SUM(CASE WHEN tipo = 'receita' THEN valor2 ELSE -valor2 END), 0)
-                FROM movimentos
-                WHERE data <= ?
-                  AND (source IS NULL OR source NOT LIKE ?)
-                  {extra}
-                """,
-                (day.isoformat(), AJUSTE_SOURCE_LIKE),
-            ).fetchone()
-            return round(float(row[0] or 0.0), 2)
-
-        base = _efeito_ajuste_row(ajuste)
-        row = conn.execute(
-            f"""
-            SELECT COALESCE(SUM(CASE WHEN tipo = 'receita' THEN valor2 ELSE -valor2 END), 0)
-            FROM movimentos
-            WHERE data >= ? AND data <= ?
-              AND (source IS NULL OR source NOT LIKE ?)
-              {extra}
-            """,
-            (ajuste["data"], day.isoformat(), AJUSTE_SOURCE_LIKE),
-        ).fetchone()
-        return round(base + float(row[0] or 0.0), 2)
-
-
-def saldo_operacional_inicial(day: date) -> float:
-    """Saldo do livro no começo do dia, sem rendimento lançado."""
-    ajuste = _ajuste_do_dia(day)
-    if ajuste is not None:
-        return ajuste
-    return saldo_operacional_ate(day - timedelta(days=1))
-
-
-def _ajuste_do_dia(day: date) -> Optional[float]:
-    with connect() as conn:
-        ajuste = conn.execute(
-            """
-            SELECT tipo, valor2
-            FROM movimentos
-            WHERE data = ? AND source LIKE ?
-            ORDER BY id DESC
-            LIMIT 1
-            """,
-            (day.isoformat(), AJUSTE_SOURCE_LIKE),
-        ).fetchone()
-    if not ajuste:
-        return None
-    return round(_efeito_ajuste_row(ajuste), 2)
-
-
-def datas_do_livro() -> list[date]:
-    """Dias com receita/despesa operacional ou com saldo de extrato já gravado."""
+def totais_operacionais(inicio: date, fim: date) -> dict:
+    """Créditos e despesas operacionais do intervalo (sem transferência/ajuste)."""
     from . import repository
-    from .finance import clean_text
 
-    datas: set[date] = set()
-    for snap in listar_snapshots():
-        dia = _as_date(snap.get("data"))
-        if dia:
-            datas.add(dia)
-    for mov in repository.fetch_movimentos():
-        if mov.get("ajuste_saldo"):
+    if inicio > fim:
+        return {"creditos": 0.0, "despesas": 0.0, "ignorados": 0}
+
+    creditos = 0.0
+    despesas = 0.0
+    ignorados = 0
+    for mov in repository.fetch_movimentos(inicio, fim):
+        if not movimento_entra_no_rendimento(mov):
+            if float(mov.get("realizada") or 0.0):
+                ignorados += 1
             continue
-        if clean_text(mov.get("categoria")).upper() == "RENDIMENTOS":
-            continue
-        if not float(mov.get("realizada") or 0):
-            continue
-        dia = _as_date(mov.get("data"))
-        if dia:
-            datas.add(dia)
-    return sorted(datas)
+        valor = float(mov.get("realizada") or 0.0)
+        if mov.get("tipo") == "receita":
+            creditos += valor
+        elif mov.get("tipo") == "despesa":
+            despesas += valor
+    return {
+        "creditos": round(creditos, 2),
+        "despesas": round(despesas, 2),
+        "ignorados": ignorados,
+    }
 
 
 def calcular_rendimento(anterior: dict, atual: dict) -> dict:
@@ -462,117 +403,88 @@ def listar_snapshots() -> list[dict]:
 
 
 def serie_rendimentos() -> dict:
-    """Série diária do livro: rendimento só quando há saldo anterior e saldo final."""
-    snaps = {}
-    for snap in listar_snapshots():
-        dia = _as_date(snap.get("data"))
-        if dia:
-            snaps[dia] = snap
-
-    datas = datas_do_livro()
-    if snaps:
-        inicio_serie = min(snaps)
-        datas = [dia for dia in datas if dia >= inicio_serie]
-
+    """Série só entre dias com saldo de extrato: rendimento no fim de cada intervalo."""
+    snaps = listar_snapshots()
     linhas = []
     total_conferido = 0.0
     dias_conferidos = 0
-    saldo_corrente = None
-    data_anterior = None
+    ignorados_total = 0
 
-    for dia in datas:
-        totais = totais_operacionais(dia, dia)
-        snap = snaps.get(dia)
-        banco = patrimonio(snap) if snap else None
-        ajuste = _ajuste_do_dia(dia)
-
+    for indice, atual in enumerate(snaps):
+        data_atu = _as_date(atual.get("data"))
+        banco = patrimonio(atual)
         item = {
-            "data": dia.isoformat(),
-            "saldo_cc": (snap or {}).get("saldo_cc"),
-            "invest_resgate_auto": (snap or {}).get("invest_resgate_auto"),
-            "saldo_total": (snap or {}).get("saldo_total"),
+            "data": data_atu.isoformat() if data_atu else atual.get("data"),
+            "saldo_cc": atual.get("saldo_cc"),
+            "invest_resgate_auto": atual.get("invest_resgate_auto"),
+            "saldo_total": atual.get("saldo_total"),
             "patrimonio": banco,
-            "fundos": dict((snap or {}).get("fundos") or {}),
-            "origem": (snap or {}).get("origem") or "livro",
-            "atualizado_em": (snap or {}).get("atualizado_em") or "",
+            "fundos": dict(atual.get("fundos") or {}),
+            "origem": atual.get("origem") or "",
+            "atualizado_em": atual.get("atualizado_em") or "",
             "conferido": False,
             "data_anterior": None,
             "intervalo_dias": None,
             "saldo_anterior": None,
-            "creditos": totais["creditos"],
-            "despesas": totais["despesas"],
+            "creditos": None,
+            "despesas": None,
             "saldo_esperado": None,
-            "saldo_final": None,
+            "saldo_final": banco,
             "rendimento_total": None,
             "por_fundo": [],
             "motivo": None,
-            "fonte_saldo": "sistema",
+            "fonte_saldo": "banco",
+            "movimentos_ignorados": 0,
         }
 
-        if saldo_corrente is None:
-            if ajuste is not None:
-                saldo_anterior = ajuste
-            elif banco is not None:
-                item["saldo_final"] = banco
-                item["fonte_saldo"] = "banco"
-                item["motivo"] = (
-                    "Ponto de partida do livro — o rendimento sai a partir do dia seguinte."
-                )
-                saldo_corrente = banco
-                data_anterior = dia
-                linhas.append(item)
-                continue
-            else:
-                inicial = saldo_operacional_inicial(dia)
-                item["saldo_anterior"] = inicial
-                item["saldo_esperado"] = round(
-                    inicial + totais["creditos"] - totais["despesas"], 2
-                )
-                item["saldo_final"] = item["saldo_esperado"]
-                item["motivo"] = (
-                    "Sem saldo anterior no sistema. Informe o saldo real em "
-                    "Ajuste de saldo ou importe o primeiro extrato."
-                )
-                linhas.append(item)
-                continue
-        else:
-            saldo_anterior = saldo_corrente
-
-        esperado = round(saldo_anterior + totais["creditos"] - totais["despesas"], 2)
-        intervalo = (dia - data_anterior).days if data_anterior else None
-        item["data_anterior"] = data_anterior.isoformat() if data_anterior else None
-        item["intervalo_dias"] = intervalo
-        item["saldo_anterior"] = saldo_anterior
-        item["saldo_esperado"] = esperado
-
-        if banco is not None:
-            rendimento = round(banco - esperado, 2)
-            item.update(
-                {
-                    "conferido": True,
-                    "saldo_final": banco,
-                    "rendimento_total": rendimento,
-                    "fonte_saldo": "banco",
-                    "motivo": None,
-                }
+        if indice == 0 or data_atu is None:
+            item["motivo"] = (
+                "Ponto de partida — o rendimento sai a partir do próximo extrato."
             )
-            total_conferido += rendimento
-            dias_conferidos += 1
-            saldo_corrente = banco
-        else:
-            item.update(
-                {
-                    "saldo_final": esperado,
-                    "fonte_saldo": "sistema",
-                    "motivo": (
-                        "Livro do dia (receitas − despesas). O rendimento aparece "
-                        "quando o saldo final do banco estiver gravado neste dia."
-                    ),
-                }
-            )
-            saldo_corrente = esperado
+            linhas.append(item)
+            continue
 
-        data_anterior = dia
+        anterior = snaps[indice - 1]
+        calculo = calcular_rendimento(anterior, atual)
+        data_ant = _as_date(anterior.get("data"))
+        intervalo = (data_atu - data_ant).days if data_ant else None
+        inicio_mov = data_ant + timedelta(days=1) if data_ant else data_atu
+        totais = totais_operacionais(inicio_mov, data_atu)
+        ignorados_total += int(totais.get("ignorados") or 0)
+
+        aviso = None
+        if intervalo and intervalo > 1:
+            aviso = (
+                f"Intervalo de {intervalo} dia(s): o rendimento deste período "
+                "aparece junto neste extrato."
+            )
+        if totais.get("ignorados"):
+            extra = (
+                f"{totais['ignorados']} lançamento(s) ignorado(s) "
+                "(resgate/aplicação/ajuste)."
+            )
+            aviso = f"{aviso} {extra}".strip() if aviso else extra
+
+        item.update(
+            {
+                "conferido": True,
+                "data_anterior": calculo["data_anterior"].isoformat()
+                if isinstance(calculo["data_anterior"], date)
+                else calculo["data_anterior"],
+                "intervalo_dias": intervalo,
+                "saldo_anterior": calculo["saldo_anterior"],
+                "creditos": calculo["creditos"],
+                "despesas": calculo["despesas"],
+                "saldo_esperado": calculo["saldo_esperado"],
+                "saldo_final": calculo["saldo_final"],
+                "rendimento_total": calculo["rendimento_total"],
+                "por_fundo": calculo["por_fundo"],
+                "motivo": aviso,
+                "movimentos_ignorados": totais.get("ignorados") or 0,
+            }
+        )
+        total_conferido += float(calculo["rendimento_total"] or 0)
+        dias_conferidos += 1
         linhas.append(item)
 
     pasta = info_pasta_uploads()
@@ -587,6 +499,7 @@ def serie_rendimentos() -> dict:
         "pendentes": 0,
         "arquivos_lidos": 0,
         "ignorados": [],
+        "movimentos_ignorados": ignorados_total,
     }
 
 
