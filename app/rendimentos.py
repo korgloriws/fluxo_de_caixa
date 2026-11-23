@@ -1,13 +1,12 @@
-"""Rendimento a partir do livro de caixa.
+"""Rendimento dos fundos do FUNDEB.
 
-Fórmula usada na conferência manual:
-    saldo esperado = saldo anterior + créditos − despesas
-    rendimento     = saldo final − saldo esperado
+No FUNDEB o overnight fica aplicado (Invest. Resgate Automático / BB RF).
+A conferência compara só o saldo dos fundos entre dois extratos:
 
-A conferência só ocorre entre dias que já têm saldo de extrato gravado.
-Créditos e despesas vêm dos lançamentos importados no intervalo, sem
-RENDIMENTOS, ajuste de saldo, resgate/aplicação de fundo nem OUTROS de
-correção (valor negativo ou linha Editável).
+    rendimento = fundos final − fundos anterior
+
+Imposto e despesa na conta corrente não entram nessa conta. A série só
+avança entre dias que já têm saldo de extrato gravado.
 """
 
 from __future__ import annotations
@@ -136,9 +135,10 @@ def extrair_snapshot_extrato(linhas: list[str]) -> Optional[dict]:
     }
 
 
-def patrimonio(snapshot: dict) -> float:
-    """CC + resgate automático + fundos extras (CP), sem contar o SD duas vezes."""
-    cc = float(snapshot.get("saldo_cc") or 0.0)
+def patrimonio_fundos(snapshot: dict) -> float:
+    """Só o aplicado: resgate automático + fundos extras (CP), sem CC nem SD duplicado."""
+    if not snapshot:
+        return 0.0
     auto = float(snapshot.get("invest_resgate_auto") or 0.0)
     extra = 0.0
     for nome, valor in (snapshot.get("fundos") or {}).items():
@@ -147,7 +147,13 @@ def patrimonio(snapshot: dict) -> float:
         extra += float(valor or 0.0)
     if auto == 0:
         extra = sum(float(v or 0.0) for v in (snapshot.get("fundos") or {}).values())
-    return round(cc + auto + extra, 2)
+    return round(auto + extra, 2)
+
+
+def patrimonio(snapshot: dict) -> float:
+    """CC + fundos (uso geral). Para rendimento do FUNDEB preferir patrimonio_fundos."""
+    cc = float(snapshot.get("saldo_cc") or 0.0)
+    return round(cc + patrimonio_fundos(snapshot), 2)
 
 
 RE_TRANSFERENCIA_FUNDO = re.compile(
@@ -223,7 +229,7 @@ def totais_operacionais(inicio: date, fim: date) -> dict:
 
 
 def calcular_rendimento(anterior: dict, atual: dict) -> dict:
-    """Rendimento = saldo final − (saldo anterior + créditos − despesas)."""
+    """Rendimento = variação dos fundos entre dois extratos (sem CC)."""
     data_ant = anterior.get("data")
     data_atu = atual.get("data")
     if isinstance(data_ant, str):
@@ -231,19 +237,20 @@ def calcular_rendimento(anterior: dict, atual: dict) -> dict:
     if isinstance(data_atu, str):
         data_atu = date.fromisoformat(data_atu[:10])
 
-    inicio_mov = data_ant + timedelta(days=1) if isinstance(data_ant, date) else data_ant
-    totais = totais_operacionais(inicio_mov, data_atu) if isinstance(data_atu, date) else {
-        "creditos": 0.0,
-        "despesas": 0.0,
-    }
-
-    saldo_anterior = patrimonio(anterior)
-    saldo_final = patrimonio(atual)
-    esperado = round(saldo_anterior + totais["creditos"] - totais["despesas"], 2)
-    rendimento = round(saldo_final - esperado, 2)
+    saldo_anterior = patrimonio_fundos(anterior)
+    saldo_final = patrimonio_fundos(atual)
+    rendimento = round(saldo_final - saldo_anterior, 2)
 
     fundos_ant = dict(anterior.get("fundos") or {})
     fundos_atu = dict(atual.get("fundos") or {})
+    # Inclui o resgate automático na visão por fundo quando não veio no dict.
+    auto_ant = float(anterior.get("invest_resgate_auto") or 0.0)
+    auto_atu = float(atual.get("invest_resgate_auto") or 0.0)
+    if auto_ant and FUNDO_SD not in {normalizar_nome_fundo(n) for n in fundos_ant}:
+        fundos_ant[FUNDO_SD] = auto_ant
+    if auto_atu and FUNDO_SD not in {normalizar_nome_fundo(n) for n in fundos_atu}:
+        fundos_atu[FUNDO_SD] = auto_atu
+
     por_fundo = []
     for nome in sorted(set(fundos_ant) | set(fundos_atu)):
         antes = float(fundos_ant.get(nome) or 0.0)
@@ -256,16 +263,16 @@ def calcular_rendimento(anterior: dict, atual: dict) -> dict:
         "data_anterior": data_ant,
         "data_atual": data_atu,
         "saldo_anterior": saldo_anterior,
-        "creditos": totais["creditos"],
-        "despesas": totais["despesas"],
-        "saldo_esperado": esperado,
+        "creditos": 0.0,
+        "despesas": 0.0,
+        "saldo_esperado": saldo_anterior,
         "saldo_final": saldo_final,
         "rendimento_total": rendimento,
         "por_fundo": por_fundo,
         "saldo_cc_anterior": float(anterior.get("saldo_cc") or 0.0),
         "saldo_cc_atual": float(atual.get("saldo_cc") or 0.0),
-        "invest_resgate_auto_anterior": float(anterior.get("invest_resgate_auto") or 0.0),
-        "invest_resgate_auto_atual": float(atual.get("invest_resgate_auto") or 0.0),
+        "invest_resgate_auto_anterior": auto_ant,
+        "invest_resgate_auto_atual": auto_atu,
     }
 
 
@@ -403,22 +410,21 @@ def listar_snapshots() -> list[dict]:
 
 
 def serie_rendimentos() -> dict:
-    """Série só entre dias com saldo de extrato: rendimento no fim de cada intervalo."""
+    """Série entre extratos: rendimento = variação dos fundos no intervalo."""
     snaps = listar_snapshots()
     linhas = []
     total_conferido = 0.0
     dias_conferidos = 0
-    ignorados_total = 0
 
     for indice, atual in enumerate(snaps):
         data_atu = _as_date(atual.get("data"))
-        banco = patrimonio(atual)
+        fundos = patrimonio_fundos(atual)
         item = {
             "data": data_atu.isoformat() if data_atu else atual.get("data"),
             "saldo_cc": atual.get("saldo_cc"),
             "invest_resgate_auto": atual.get("invest_resgate_auto"),
             "saldo_total": atual.get("saldo_total"),
-            "patrimonio": banco,
+            "patrimonio": fundos,
             "fundos": dict(atual.get("fundos") or {}),
             "origem": atual.get("origem") or "",
             "atualizado_em": atual.get("atualizado_em") or "",
@@ -429,11 +435,11 @@ def serie_rendimentos() -> dict:
             "creditos": None,
             "despesas": None,
             "saldo_esperado": None,
-            "saldo_final": banco,
+            "saldo_final": fundos,
             "rendimento_total": None,
             "por_fundo": [],
             "motivo": None,
-            "fonte_saldo": "banco",
+            "fonte_saldo": "fundos",
             "movimentos_ignorados": 0,
         }
 
@@ -448,22 +454,13 @@ def serie_rendimentos() -> dict:
         calculo = calcular_rendimento(anterior, atual)
         data_ant = _as_date(anterior.get("data"))
         intervalo = (data_atu - data_ant).days if data_ant else None
-        inicio_mov = data_ant + timedelta(days=1) if data_ant else data_atu
-        totais = totais_operacionais(inicio_mov, data_atu)
-        ignorados_total += int(totais.get("ignorados") or 0)
 
         aviso = None
         if intervalo and intervalo > 1:
             aviso = (
-                f"Intervalo de {intervalo} dia(s): o rendimento deste período "
+                f"Intervalo de {intervalo} dia(s): overnight deste período "
                 "aparece junto neste extrato."
             )
-        if totais.get("ignorados"):
-            extra = (
-                f"{totais['ignorados']} lançamento(s) ignorado(s) "
-                "(resgate/aplicação/ajuste)."
-            )
-            aviso = f"{aviso} {extra}".strip() if aviso else extra
 
         item.update(
             {
@@ -473,14 +470,13 @@ def serie_rendimentos() -> dict:
                 else calculo["data_anterior"],
                 "intervalo_dias": intervalo,
                 "saldo_anterior": calculo["saldo_anterior"],
-                "creditos": calculo["creditos"],
-                "despesas": calculo["despesas"],
+                "creditos": 0.0,
+                "despesas": 0.0,
                 "saldo_esperado": calculo["saldo_esperado"],
                 "saldo_final": calculo["saldo_final"],
                 "rendimento_total": calculo["rendimento_total"],
                 "por_fundo": calculo["por_fundo"],
                 "motivo": aviso,
-                "movimentos_ignorados": totais.get("ignorados") or 0,
             }
         )
         total_conferido += float(calculo["rendimento_total"] or 0)
@@ -499,7 +495,8 @@ def serie_rendimentos() -> dict:
         "pendentes": 0,
         "arquivos_lidos": 0,
         "ignorados": [],
-        "movimentos_ignorados": ignorados_total,
+        "movimentos_ignorados": 0,
+        "modo": "fundos",
     }
 
 

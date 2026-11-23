@@ -2058,13 +2058,8 @@
   function renderizarRendimentos(dados) {
     const linhas = dados.linhas || [];
     const diasLivro = dados.dias_livro || linhas.length;
-    const ignoradosMov = dados.movimentos_ignorados || 0;
-    let status =
-      'Conferência só entre dias com saldo de extrato. Créditos/despesas do livro no intervalo (sem resgate/aplicação/ajuste).';
-    if (ignoradosMov) {
-      status += ` · ${ignoradosMov} lançamento(s) ignorado(s) na conta.`;
-    }
-    $('#rendimentos-status').textContent = status;
+    $('#rendimentos-status').textContent =
+      'Rendimento = variação dos fundos entre extratos (sem conta corrente, imposto ou folha).';
 
     const kpiQtd = (rotulo, numero, classe, rodape) => `
       <div class="kpi ${classe}">
@@ -2073,24 +2068,24 @@
         <div class="kpi-rodape">${rodape}</div>
       </div>`;
     $('#kpis-rendimentos').innerHTML = [
-      kpiQtd('Extratos', dados.extratos || diasLivro, 'kpi--saldo', 'com saldo gravado'),
-      kpiQtd('Intervalos conferidos', dados.dias_conferidos || 0, 'kpi--receita', 'com saldo anterior e final'),
+      kpiQtd('Extratos', dados.extratos || diasLivro, 'kpi--saldo', 'com fundos gravados'),
+      kpiQtd('Intervalos conferidos', dados.dias_conferidos || 0, 'kpi--receita', 'com extrato anterior'),
       cartaoKpi({
         rotulo: 'Rendimento conferido',
         valor: dados.rendimento_total || 0,
         classe: 'kpi--roxo',
         icone: ICONE_KPI.balanca,
         corValor: (dados.rendimento_total || 0) >= 0 ? 'var(--verde)' : 'var(--vermelho)',
-        rodape: 'soma apenas dos intervalos conferidos',
+        rodape: 'soma dos intervalos conferidos',
       }),
     ].join('');
 
     const corpo = $('#corpo-rendimentos');
     if (!linhas.length) {
-      corpo.innerHTML = `<tr><td colspan="9">
+      corpo.innerHTML = `<tr><td colspan="6">
         <div class="vazio">
-          <strong>Nenhum saldo de extrato gravado ainda</strong>
-          <p>Importe os PDFs de receita (com rodapé de fundos) e os arquivos de despesa. O rendimento só aparece entre dois extratos.</p>
+          <strong>Nenhum saldo de fundos gravado ainda</strong>
+          <p>Importe os PDFs de extrato (com rodapé de fundos). O rendimento só aparece entre dois extratos.</p>
         </div></td></tr>`;
       return;
     }
@@ -2103,10 +2098,8 @@
 
     corpo.innerHTML = linhas.map((linha) => {
       const conferido = !!linha.conferido;
-      const semMovimento = conferido && !linha.creditos && !linha.despesas;
       const avisos = [];
       if (linha.motivo) avisos.push(linha.motivo);
-      else if (semMovimento) avisos.push('sem crédito/despesa operacional no intervalo');
       const situacao = conferido
         ? `<span class="etiqueta etiqueta--receita">Conferido</span>
            ${avisos.length ? `<div style="font-size:11px;color:var(--texto-3);margin-top:4px">${escapar(avisos.join(' · '))}</div>` : ''}`
@@ -2119,9 +2112,6 @@
         <td class="num">${fmtData(linha.data)}</td>
         <td>${linha.data_anterior ? fmtData(linha.data_anterior) : '—'}</td>
         ${celula(linha.saldo_anterior)}
-        ${celula(linha.creditos)}
-        ${celula(linha.despesas)}
-        ${celula(linha.saldo_esperado)}
         ${celula(linha.saldo_final)}
         <td class="alinhado-direita num">${rendimento}</td>
         <td>${situacao}</td>
@@ -2147,7 +2137,7 @@
 
   $('#btn-rendimentos-reler')?.addEventListener('click', async () => {
     const dados = await carregarRendimentos();
-    if (dados) notificar('Cálculo atualizado com os lançamentos do sistema.', 'sucesso');
+    if (dados) notificar('Cálculo atualizado pela variação dos fundos.', 'sucesso');
   });
 
   /* ==================== Exportação ==================== */

@@ -559,9 +559,9 @@
         <div>
           <div class="cartao-titulo">Rendimentos dos fundos</div>
           <div class="cartao-subtitulo">
-            Aba de teste. Fórmula:
-            <strong>rendimento = saldo final − (saldo anterior + créditos − despesas)</strong>.
-            Só confere entre dias com saldo de extrato. Créditos/despesas vêm do livro (sem resgate, aplicação nem OUTROS de ajuste).
+            Aba de teste. Fórmula do FUNDEB:
+            <strong>rendimento = fundos final − fundos anterior</strong>
+            (Invest. Resgate Automático + BB RF, sem conta corrente). Só confere entre dias com extrato gravado.
           </div>
         </div>
         <button class="btn btn-pequeno btn-primario" type="button" id="btn-rendimentos-reler">
@@ -577,11 +577,8 @@
               <tr>
                 <th>Até</th>
                 <th>Desde</th>
-                <th class="alinhado-direita">Saldo anterior</th>
-                <th class="alinhado-direita">(+) Créditos</th>
-                <th class="alinhado-direita">(−) Despesas</th>
-                <th class="alinhado-direita">(=) Esperado</th>
-                <th class="alinhado-direita">Saldo final</th>
+                <th class="alinhado-direita">Fundos anterior</th>
+                <th class="alinhado-direita">Fundos final</th>
                 <th class="alinhado-direita">Rendimento</th>
                 <th>Situação</th>
               </tr>
@@ -942,5 +939,5 @@
 </script>
 <script src="{{ root_path }}/static/js/auth-ui.js?v=5"></script>
 <script src="{{ root_path }}/static/js/graficos.js"></script>
-<script src="{{ root_path }}/static/js/app.js?v=29"></script>
+<script src="{{ root_path }}/static/js/app.js?v=30"></script>
 {% endblock %}
