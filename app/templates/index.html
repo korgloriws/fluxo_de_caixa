@@ -559,9 +559,9 @@
         <div>
           <div class="cartao-titulo">Rendimentos dos fundos</div>
           <div class="cartao-subtitulo">
-            Aba de teste. Fórmula do FUNDEB:
-            <strong>rendimento = (fundos final − fundos anterior) + resgates − aplicações</strong>.
-            Resgate não conta como negativo; aplicação não conta como rendimento. Média/dia = total ÷ dias.
+            Conferência por fundo: saldo aplicado, variação e taxa % ao dia.
+            Se a taxa bruta passar de ~0,15%/dia, o excesso é tratado como aplicação/resgate (não overnight).
+            Taxa de referência: BB RF CP (ou 0,05%/dia).
           </div>
         </div>
         <button class="btn btn-pequeno btn-primario" type="button" id="btn-rendimentos-reler">
@@ -578,11 +578,13 @@
                 <th>Até</th>
                 <th>Desde</th>
                 <th class="alinhado-direita">Dias</th>
-                <th class="alinhado-direita">Fundos anterior</th>
-                <th class="alinhado-direita">Fundos final</th>
-                <th class="alinhado-direita">Rendimento (período)</th>
-                <th class="alinhado-direita">Média / dia</th>
-                <th>Situação</th>
+                <th class="alinhado-direita">Fundos ant.</th>
+                <th class="alinhado-direita">Fundos fin.</th>
+                <th class="alinhado-direita">Var. bruta</th>
+                <th class="alinhado-direita">Taxa bruta/dia</th>
+                <th class="alinhado-direita">Rendimento</th>
+                <th class="alinhado-direita">Taxa rend./dia</th>
+                <th>Fundos / situação</th>
               </tr>
             </thead>
             <tbody id="corpo-rendimentos"></tbody>
@@ -941,5 +943,5 @@
 </script>
 <script src="{{ root_path }}/static/js/auth-ui.js?v=5"></script>
 <script src="{{ root_path }}/static/js/graficos.js"></script>
-<script src="{{ root_path }}/static/js/app.js?v=32"></script>
+<script src="{{ root_path }}/static/js/app.js?v=33"></script>
 {% endblock %}

@@ -1,14 +1,16 @@
 """Rendimento dos fundos do FUNDEB.
 
-No FUNDEB o overnight fica aplicado (Invest. Resgate Automático / BB RF).
-A conferência compara o saldo dos fundos entre dois extratos e ajusta
-transferências do livro:
+O overnight fica no Invest. Resgate Automático / BB RF. A variação bruta
+desses saldos mistura rendimento com aplicação/resgate de principal
+(imposto que “dorme” no fundo, resgate para pagar folha, etc.).
 
-    rendimento = (fundos final − fundos anterior) + resgates − aplicações
+Conferência:
+  1) variação por fundo e taxa % ao dia;
+  2) se a taxa/dia passar de ~0,15% (acima de RF típico), o excesso é
+     tratado como aplicação/resgate, não overnight;
+  3) a taxa de referência é a do BB RF CP (quando razoável), senão 0,05%/dia.
 
-Assim resgate (saída do fundo) não aparece como rendimento negativo, e
-aplicação não aparece como rendimento positivo. Imposto e folha na CC
-não entram. A série só avança entre dias com extrato gravado.
+Assim dá para ver fundos aplicados, taxa e separar o que é rendimento.
 """
 
 from __future__ import annotations
@@ -24,6 +26,11 @@ from .repository import connect
 
 FUNDO_SD = "BB RF SD Diferenciado"
 FUNDO_CP = "BB RF CP Automatico"
+
+# Teto de taxa/dia para RF DI (~0,15%). Acima disso quase sempre é aporte/resgate.
+TAXA_MAX_DIA = 0.0015
+# Fallback ~CDI/Selic na casa de 0,05%/dia útil quando não há CP confiável.
+TAXA_REF_DIA_PADRAO = 0.0005
 
 RE_SALDO_FECHAMENTO = re.compile(
     r"^(\d{2}/\d{2}/\d{4}).*00000999.*S\s*A\s*L\s*D\s*O.*?([\d.]+,\d{2})",
@@ -277,8 +284,105 @@ def totais_transferencia_fundo(inicio: date, fim: date) -> dict:
     }
 
 
+def _saldos_fundos_snapshot(snapshot: dict) -> dict[str, float]:
+    """Saldos por fundo sem duplicar SD quando já há Invest. Resgate Automático."""
+    fundos = dict(snapshot.get("fundos") or {})
+    auto = float(snapshot.get("invest_resgate_auto") or 0.0)
+    saida: dict[str, float] = {}
+    if auto > 0.009:
+        saida[FUNDO_SD] = auto
+        for nome, valor in fundos.items():
+            if normalizar_nome_fundo(nome) == FUNDO_SD:
+                continue
+            saida[normalizar_nome_fundo(nome)] = float(valor or 0.0)
+    else:
+        for nome, valor in fundos.items():
+            saida[normalizar_nome_fundo(nome)] = float(valor or 0.0)
+    return saida
+
+
+def _taxa_dia(antes: float, variacao: float, dias: int) -> Optional[float]:
+    if antes <= 0.009 or dias <= 0:
+        return None
+    return variacao / antes / dias
+
+
+def _analise_por_fundo(
+    anterior: dict,
+    atual: dict,
+    *,
+    dias: int,
+) -> tuple[list[dict], float, float, Optional[float]]:
+    """Separa overnight de aporte/resgate por fundo e devolve taxa de referência."""
+    ant = _saldos_fundos_snapshot(anterior)
+    atu = _saldos_fundos_snapshot(atual)
+    dias = max(int(dias or 1), 1)
+
+    # Taxa do CP como referência (fundo que quase não recebe sweep de imposto).
+    taxa_ref = None
+    cp_ant = float(ant.get(FUNDO_CP) or 0.0)
+    cp_atu = float(atu.get(FUNDO_CP) or 0.0)
+    if cp_ant > 0.009:
+        taxa_cp = _taxa_dia(cp_ant, cp_atu - cp_ant, dias)
+        if taxa_cp is not None and abs(taxa_cp) <= TAXA_MAX_DIA:
+            taxa_ref = taxa_cp
+    if taxa_ref is None:
+        taxa_ref = TAXA_REF_DIA_PADRAO
+
+    por_fundo = []
+    rendimento = 0.0
+    aplicacoes_liq = 0.0
+    for nome in sorted(set(ant) | set(atu)):
+        antes = float(ant.get(nome) or 0.0)
+        depois = float(atu.get(nome) or 0.0)
+        variacao = round(depois - antes, 2)
+        taxa = _taxa_dia(antes, variacao, dias)
+        alerta = bool(taxa is not None and abs(taxa) > TAXA_MAX_DIA)
+
+        if antes <= 0.009:
+            # Saldo novo / zerado: variação é aporte ou resgate, não overnight.
+            rend_f = 0.0
+            aplic_f = variacao
+            alerta = abs(variacao) > 0.009
+        elif taxa is not None and abs(taxa) > TAXA_MAX_DIA:
+            alerta = True
+            if variacao < 0:
+                # Queda forte: principal saiu (resgate). Overnight só no que ficou,
+                # pela taxa de referência e pelo menor saldo do intervalo.
+                base = min(antes, depois)
+                rend_f = round(base * taxa_ref * dias, 2) if base > 0.009 else 0.0
+                aplic_f = round(variacao - rend_f, 2)
+            else:
+                # Alta forte: principal entrou (aplicação). Overnight pela taxa ref.
+                rend_f = round(antes * taxa_ref * dias, 2)
+                aplic_f = round(variacao - rend_f, 2)
+        else:
+            rend_f = variacao
+            aplic_f = 0.0
+
+        rendimento += rend_f
+        aplicacoes_liq += aplic_f
+        por_fundo.append(
+            {
+                "fundo": nome,
+                "anterior": round(antes, 2),
+                "atual": round(depois, 2),
+                "variacao": variacao,
+                "taxa_dia": None if taxa is None else round(taxa * 100, 4),
+                "taxa_periodo": None
+                if antes <= 0.009
+                else round((variacao / antes) * 100, 4),
+                "rendimento": round(rend_f, 2),
+                "aplicacao": round(aplic_f, 2),
+                "alerta": alerta,
+            }
+        )
+
+    return por_fundo, round(rendimento, 2), round(aplicacoes_liq, 2), taxa_ref
+
+
 def calcular_rendimento(anterior: dict, atual: dict) -> dict:
-    """Rendimento = variação dos fundos + resgates − aplicações."""
+    """Rendimento overnight estimado (separa aplicação/resgate pela taxa)."""
     data_ant = anterior.get("data")
     data_atu = atual.get("data")
     if isinstance(data_ant, str):
@@ -289,52 +393,32 @@ def calcular_rendimento(anterior: dict, atual: dict) -> dict:
     saldo_anterior = patrimonio_fundos(anterior)
     saldo_final = patrimonio_fundos(atual)
     variacao = round(saldo_final - saldo_anterior, 2)
+    intervalo = (
+        (data_atu - data_ant).days
+        if isinstance(data_ant, date) and isinstance(data_atu, date)
+        else 1
+    ) or 1
 
-    # Janela das transferências:
-    # - fundos caíram: inclui o dia do extrato anterior (resgate lançado antes
-    #   de aparecer no rodapé do próximo arquivo);
-    # - fundos subiram: só dias depois do extrato anterior (não puxa resgate
-    #   ainda não refletido no saldo aplicado).
-    resgates = 0.0
-    aplicacoes = 0.0
+    por_fundo, rendimento, aplicacoes_est, taxa_ref = _analise_por_fundo(
+        anterior, atual, dias=intervalo
+    )
+
+    # Confere também resgates/aplicações explícitos no livro.
+    resgates_livro = 0.0
+    aplicacoes_livro = 0.0
     if isinstance(data_ant, date) and isinstance(data_atu, date):
         if variacao < 0:
             transf = totais_transferencia_fundo(data_ant, data_atu)
-            # Só usa resgate para explicar a queda (não cria rendimento extra).
-            resgates = min(float(transf["resgates"]), -variacao)
-            aplicacoes = 0.0
+            resgates_livro = float(transf["resgates"])
         elif variacao > 0:
             inicio = data_ant + timedelta(days=1)
-            transf = totais_transferencia_fundo(inicio, data_atu) if inicio <= data_atu else {
-                "resgates": 0.0,
-                "aplicacoes": 0.0,
-            }
-            # Só desconta aplicação até o tamanho da alta dos fundos.
-            aplicacoes = min(float(transf["aplicacoes"]), variacao)
-            resgates = 0.0
-        else:
-            transf = {"resgates": 0.0, "aplicacoes": 0.0}
-    else:
-        transf = {"resgates": 0.0, "aplicacoes": 0.0}
+            if inicio <= data_atu:
+                transf = totais_transferencia_fundo(inicio, data_atu)
+                aplicacoes_livro = float(transf["aplicacoes"])
 
-    rendimento = round(variacao + resgates - aplicacoes, 2)
-
-    fundos_ant = dict(anterior.get("fundos") or {})
-    fundos_atu = dict(atual.get("fundos") or {})
     auto_ant = float(anterior.get("invest_resgate_auto") or 0.0)
     auto_atu = float(atual.get("invest_resgate_auto") or 0.0)
-    if auto_ant and FUNDO_SD not in {normalizar_nome_fundo(n) for n in fundos_ant}:
-        fundos_ant[FUNDO_SD] = auto_ant
-    if auto_atu and FUNDO_SD not in {normalizar_nome_fundo(n) for n in fundos_atu}:
-        fundos_atu[FUNDO_SD] = auto_atu
-
-    por_fundo = []
-    for nome in sorted(set(fundos_ant) | set(fundos_atu)):
-        antes = float(fundos_ant.get(nome) or 0.0)
-        depois = float(fundos_atu.get(nome) or 0.0)
-        por_fundo.append(
-            {"fundo": nome, "anterior": antes, "atual": depois, "variacao": round(depois - antes, 2)}
-        )
+    taxa_bruta = _taxa_dia(saldo_anterior, variacao, intervalo)
 
     return {
         "data_anterior": data_ant,
@@ -345,9 +429,18 @@ def calcular_rendimento(anterior: dict, atual: dict) -> dict:
         "saldo_esperado": saldo_anterior,
         "saldo_final": saldo_final,
         "variacao_fundos": variacao,
-        "resgates": round(resgates, 2),
-        "aplicacoes": round(aplicacoes, 2),
+        "resgates": round(resgates_livro, 2),
+        "aplicacoes": round(aplicacoes_est, 2),
+        "aplicacoes_livro": round(aplicacoes_livro, 2),
         "rendimento_total": rendimento,
+        "taxa_dia": None if taxa_bruta is None else round(taxa_bruta * 100, 4),
+        "taxa_dia_ref": round(float(taxa_ref) * 100, 4),
+        "taxa_dia_rendimento": (
+            None
+            if saldo_anterior <= 0.009
+            else round((rendimento / saldo_anterior / intervalo) * 100, 4)
+        ),
+        "alerta_taxa": bool(taxa_bruta is not None and abs(taxa_bruta) > TAXA_MAX_DIA),
         "por_fundo": por_fundo,
         "saldo_cc_anterior": float(anterior.get("saldo_cc") or 0.0),
         "saldo_cc_atual": float(atual.get("saldo_cc") or 0.0),
@@ -521,6 +614,10 @@ def serie_rendimentos() -> dict:
             "aplicacoes": None,
             "rendimento_total": None,
             "rendimento_diario": None,
+            "taxa_dia": None,
+            "taxa_dia_ref": None,
+            "taxa_dia_rendimento": None,
+            "alerta_taxa": False,
             "por_fundo": [],
             "motivo": None,
             "fonte_saldo": "fundos",
@@ -531,6 +628,19 @@ def serie_rendimentos() -> dict:
             item["motivo"] = (
                 "Ponto de partida — o rendimento sai a partir do próximo extrato."
             )
+            item["por_fundo"] = [
+                {
+                    "fundo": nome,
+                    "anterior": valor,
+                    "atual": valor,
+                    "variacao": 0.0,
+                    "taxa_dia": None,
+                    "rendimento": 0.0,
+                    "aplicacao": 0.0,
+                    "alerta": False,
+                }
+                for nome, valor in sorted(_saldos_fundos_snapshot(atual).items())
+            ]
             linhas.append(item)
             continue
 
@@ -554,15 +664,22 @@ def serie_rendimentos() -> dict:
             avisos.append(
                 f"Intervalo de {intervalo} dia(s): média/dia = total ÷ {intervalo}."
             )
+        if calculo.get("alerta_taxa"):
+            avisos.append(
+                "Taxa bruta acima de 0,15%/dia — parte tratada como aplicação/resgate."
+            )
+        if abs(float(calculo.get("aplicacoes") or 0)) > 0.009:
+            avisos.append(
+                f"Aplicação/resgate estimado R$ {_brl(abs(calculo['aplicacoes']))} "
+                "separado do overnight."
+            )
         if float(calculo.get("resgates") or 0) > 0.009:
             avisos.append(
-                f"Resgate R$ {_brl(calculo['resgates'])} somado de volta "
-                "(não é rendimento negativo)."
+                f"Resgate no livro R$ {_brl(calculo['resgates'])}."
             )
-        if float(calculo.get("aplicacoes") or 0) > 0.009:
+        if calculo.get("taxa_dia_ref") is not None:
             avisos.append(
-                f"Aplicação R$ {_brl(calculo['aplicacoes'])} descontada "
-                "(não é rendimento)."
+                f"Taxa ref. {str(calculo['taxa_dia_ref']).replace('.', ',')}%/dia."
             )
 
         item.update(
@@ -582,6 +699,10 @@ def serie_rendimentos() -> dict:
                 "aplicacoes": calculo.get("aplicacoes"),
                 "rendimento_total": rendimento,
                 "rendimento_diario": diario,
+                "taxa_dia": calculo.get("taxa_dia"),
+                "taxa_dia_ref": calculo.get("taxa_dia_ref"),
+                "taxa_dia_rendimento": calculo.get("taxa_dia_rendimento"),
+                "alerta_taxa": calculo.get("alerta_taxa"),
                 "por_fundo": calculo["por_fundo"],
                 "motivo": " ".join(avisos) if avisos else None,
             }

@@ -2059,7 +2059,7 @@
     const linhas = dados.linhas || [];
     const diasLivro = dados.dias_livro || linhas.length;
     $('#rendimentos-status').textContent =
-      'Rendimento = variação dos fundos + resgates − aplicações. Saída/entrada de fundo não entra como rendimento.';
+      'Por fundo: saldo, variação e taxa/dia. Rendimento = overnight estimado (taxa absurda vira aplicação/resgate).';
 
     const kpiQtd = (rotulo, numero, classe, rodape) => `
       <div class="kpi ${classe}">
@@ -2071,18 +2071,18 @@
       kpiQtd('Extratos', dados.extratos || diasLivro, 'kpi--saldo', 'com fundos gravados'),
       kpiQtd('Intervalos conferidos', dados.dias_conferidos || 0, 'kpi--receita', 'com extrato anterior'),
       cartaoKpi({
-        rotulo: 'Rendimento conferido',
+        rotulo: 'Rendimento estimado',
         valor: dados.rendimento_total || 0,
         classe: 'kpi--roxo',
         icone: ICONE_KPI.balanca,
         corValor: (dados.rendimento_total || 0) >= 0 ? 'var(--verde)' : 'var(--vermelho)',
-        rodape: 'soma dos totais de cada período',
+        rodape: 'overnight (sem aplicação/resgate)',
       }),
     ].join('');
 
     const corpo = $('#corpo-rendimentos');
     if (!linhas.length) {
-      corpo.innerHTML = `<tr><td colspan="8">
+      corpo.innerHTML = `<tr><td colspan="10">
         <div class="vazio">
           <strong>Nenhum saldo de fundos gravado ainda</strong>
           <p>Importe os PDFs de extrato (com rodapé de fundos). O rendimento só aparece entre dois extratos.</p>
@@ -2095,21 +2095,41 @@
       temNumero(valor)
         ? `<td class="alinhado-direita num">${fmtMoeda(valor)}</td>`
         : '<td class="alinhado-direita" style="color:var(--texto-3)">—</td>';
+    const celulaPct = (valor, alerta) => {
+      if (!temNumero(valor)) {
+        return '<td class="alinhado-direita" style="color:var(--texto-3)">—</td>';
+      }
+      const cor = alerta ? 'var(--vermelho)' : 'inherit';
+      return `<td class="alinhado-direita num" style="color:${cor}">${Number(valor).toFixed(4).replace('.', ',')}%</td>`;
+    };
 
     corpo.innerHTML = linhas.map((linha) => {
       const conferido = !!linha.conferido;
+      const fundos = (linha.por_fundo || []).map((f) => {
+        const taxa = temNumero(f.taxa_dia)
+          ? `${Number(f.taxa_dia).toFixed(4).replace('.', ',')}%/d`
+          : '—';
+        const marca = f.alerta ? ' ⚠' : '';
+        return `<div style="font-size:11px;margin-top:2px${f.alerta ? ';color:var(--vermelho)' : ''}">
+          <strong>${escapar(f.fundo)}</strong>${marca}:
+          ${fmtMoeda(f.anterior)} → ${fmtMoeda(f.atual)}
+          (Δ ${fmtMoeda(f.variacao)} · ${taxa}
+          · rend ${fmtMoeda(f.rendimento)}
+          ${Math.abs(f.aplicacao || 0) > 0.009 ? ` · aplic ${fmtMoeda(f.aplicacao)}` : ''})
+        </div>`;
+      }).join('');
       const avisos = [];
       if (linha.motivo) avisos.push(linha.motivo);
-      const situacao = conferido
-        ? `<span class="etiqueta etiqueta--receita">Conferido</span>
-           ${avisos.length ? `<div style="font-size:11px;color:var(--texto-3);margin-top:4px">${escapar(avisos.join(' · '))}</div>` : ''}`
-        : `<span class="etiqueta etiqueta--neutra">Início</span>
-           <div style="font-size:11px;color:var(--texto-3);margin-top:4px">${escapar(linha.motivo || '')}</div>`;
+      const etiqueta = conferido
+        ? (linha.alerta_taxa
+          ? '<span class="etiqueta etiqueta--neutra">Revisar taxa</span>'
+          : '<span class="etiqueta etiqueta--receita">Conferido</span>')
+        : '<span class="etiqueta etiqueta--neutra">Início</span>';
+      const situacao = `${etiqueta}
+        ${fundos}
+        ${avisos.length ? `<div style="font-size:11px;color:var(--texto-3);margin-top:4px">${escapar(avisos.join(' '))}</div>` : ''}`;
       const rendimento = conferido
         ? `<strong class="${linha.rendimento_total >= 0 ? 'positivo' : 'negativo'}">${fmtMoeda(linha.rendimento_total)}</strong>`
-        : '<span style="color:var(--texto-3)">—</span>';
-      const diario = conferido && temNumero(linha.rendimento_diario)
-        ? `<strong class="${linha.rendimento_diario >= 0 ? 'positivo' : 'negativo'}">${fmtMoeda(linha.rendimento_diario)}</strong>`
         : '<span style="color:var(--texto-3)">—</span>';
       const dias = conferido && linha.intervalo_dias
         ? `<td class="alinhado-direita num">${linha.intervalo_dias}</td>`
@@ -2120,8 +2140,10 @@
         ${dias}
         ${celula(linha.saldo_anterior)}
         ${celula(linha.saldo_final)}
+        ${celula(linha.variacao_fundos)}
+        ${celulaPct(linha.taxa_dia, !!linha.alerta_taxa)}
         <td class="alinhado-direita num">${rendimento}</td>
-        <td class="alinhado-direita num">${diario}</td>
+        ${celulaPct(linha.taxa_dia_rendimento, false)}
         <td>${situacao}</td>
       </tr>`;
     }).join('');
