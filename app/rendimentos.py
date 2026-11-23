@@ -437,6 +437,7 @@ def serie_rendimentos() -> dict:
             "saldo_esperado": None,
             "saldo_final": fundos,
             "rendimento_total": None,
+            "rendimento_diario": None,
             "por_fundo": [],
             "motivo": None,
             "fonte_saldo": "fundos",
@@ -454,12 +455,18 @@ def serie_rendimentos() -> dict:
         calculo = calcular_rendimento(anterior, atual)
         data_ant = _as_date(anterior.get("data"))
         intervalo = (data_atu - data_ant).days if data_ant else None
+        rendimento = float(calculo["rendimento_total"] or 0)
+        diario = (
+            round(rendimento / intervalo, 2)
+            if intervalo and intervalo > 0
+            else rendimento
+        )
 
         aviso = None
         if intervalo and intervalo > 1:
             aviso = (
-                f"Intervalo de {intervalo} dia(s): overnight deste período "
-                "aparece junto neste extrato."
+                f"Intervalo de {intervalo} dia(s): total do período ÷ {intervalo} "
+                "na média/dia (estimativa uniforme)."
             )
 
         item.update(
@@ -474,7 +481,8 @@ def serie_rendimentos() -> dict:
                 "despesas": 0.0,
                 "saldo_esperado": calculo["saldo_esperado"],
                 "saldo_final": calculo["saldo_final"],
-                "rendimento_total": calculo["rendimento_total"],
+                "rendimento_total": rendimento,
+                "rendimento_diario": diario,
                 "por_fundo": calculo["por_fundo"],
                 "motivo": aviso,
             }

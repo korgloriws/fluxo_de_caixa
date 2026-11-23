@@ -2059,7 +2059,7 @@
     const linhas = dados.linhas || [];
     const diasLivro = dados.dias_livro || linhas.length;
     $('#rendimentos-status').textContent =
-      'Rendimento = variação dos fundos entre extratos (sem conta corrente, imposto ou folha).';
+      'Rendimento do período = variação dos fundos. Com vários dias, a média/dia é o total dividido pelos dias do intervalo.';
 
     const kpiQtd = (rotulo, numero, classe, rodape) => `
       <div class="kpi ${classe}">
@@ -2076,13 +2076,13 @@
         classe: 'kpi--roxo',
         icone: ICONE_KPI.balanca,
         corValor: (dados.rendimento_total || 0) >= 0 ? 'var(--verde)' : 'var(--vermelho)',
-        rodape: 'soma dos intervalos conferidos',
+        rodape: 'soma dos totais de cada período',
       }),
     ].join('');
 
     const corpo = $('#corpo-rendimentos');
     if (!linhas.length) {
-      corpo.innerHTML = `<tr><td colspan="6">
+      corpo.innerHTML = `<tr><td colspan="8">
         <div class="vazio">
           <strong>Nenhum saldo de fundos gravado ainda</strong>
           <p>Importe os PDFs de extrato (com rodapé de fundos). O rendimento só aparece entre dois extratos.</p>
@@ -2108,12 +2108,20 @@
       const rendimento = conferido
         ? `<strong class="${linha.rendimento_total >= 0 ? 'positivo' : 'negativo'}">${fmtMoeda(linha.rendimento_total)}</strong>`
         : '<span style="color:var(--texto-3)">—</span>';
+      const diario = conferido && temNumero(linha.rendimento_diario)
+        ? `<strong class="${linha.rendimento_diario >= 0 ? 'positivo' : 'negativo'}">${fmtMoeda(linha.rendimento_diario)}</strong>`
+        : '<span style="color:var(--texto-3)">—</span>';
+      const dias = conferido && linha.intervalo_dias
+        ? `<td class="alinhado-direita num">${linha.intervalo_dias}</td>`
+        : '<td class="alinhado-direita" style="color:var(--texto-3)">—</td>';
       return `<tr>
         <td class="num">${fmtData(linha.data)}</td>
         <td>${linha.data_anterior ? fmtData(linha.data_anterior) : '—'}</td>
+        ${dias}
         ${celula(linha.saldo_anterior)}
         ${celula(linha.saldo_final)}
         <td class="alinhado-direita num">${rendimento}</td>
+        <td class="alinhado-direita num">${diario}</td>
         <td>${situacao}</td>
       </tr>`;
     }).join('');

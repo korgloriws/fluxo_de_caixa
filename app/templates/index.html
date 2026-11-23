@@ -561,7 +561,7 @@
           <div class="cartao-subtitulo">
             Aba de teste. Fórmula do FUNDEB:
             <strong>rendimento = fundos final − fundos anterior</strong>
-            (Invest. Resgate Automático + BB RF, sem conta corrente). Só confere entre dias com extrato gravado.
+            (sem conta corrente). Com vários dias entre extratos, a média/dia é o total ÷ quantidade de dias.
           </div>
         </div>
         <button class="btn btn-pequeno btn-primario" type="button" id="btn-rendimentos-reler">
@@ -577,9 +577,11 @@
               <tr>
                 <th>Até</th>
                 <th>Desde</th>
+                <th class="alinhado-direita">Dias</th>
                 <th class="alinhado-direita">Fundos anterior</th>
                 <th class="alinhado-direita">Fundos final</th>
-                <th class="alinhado-direita">Rendimento</th>
+                <th class="alinhado-direita">Rendimento (período)</th>
+                <th class="alinhado-direita">Média / dia</th>
                 <th>Situação</th>
               </tr>
             </thead>
@@ -939,5 +941,5 @@
 </script>
 <script src="{{ root_path }}/static/js/auth-ui.js?v=5"></script>
 <script src="{{ root_path }}/static/js/graficos.js"></script>
-<script src="{{ root_path }}/static/js/app.js?v=30"></script>
+<script src="{{ root_path }}/static/js/app.js?v=31"></script>
 {% endblock %}
