@@ -2059,7 +2059,7 @@
     const linhas = dados.linhas || [];
     const diasLivro = dados.dias_livro || linhas.length;
     $('#rendimentos-status').textContent =
-      'Rendimento do período = variação dos fundos. Com vários dias, a média/dia é o total dividido pelos dias do intervalo.';
+      'Rendimento = variação dos fundos + resgates − aplicações. Saída/entrada de fundo não entra como rendimento.';
 
     const kpiQtd = (rotulo, numero, classe, rodape) => `
       <div class="kpi ${classe}">

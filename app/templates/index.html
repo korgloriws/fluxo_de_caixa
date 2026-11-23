@@ -560,8 +560,8 @@
           <div class="cartao-titulo">Rendimentos dos fundos</div>
           <div class="cartao-subtitulo">
             Aba de teste. Fórmula do FUNDEB:
-            <strong>rendimento = fundos final − fundos anterior</strong>
-            (sem conta corrente). Com vários dias entre extratos, a média/dia é o total ÷ quantidade de dias.
+            <strong>rendimento = (fundos final − fundos anterior) + resgates − aplicações</strong>.
+            Resgate não conta como negativo; aplicação não conta como rendimento. Média/dia = total ÷ dias.
           </div>
         </div>
         <button class="btn btn-pequeno btn-primario" type="button" id="btn-rendimentos-reler">
@@ -941,5 +941,5 @@
 </script>
 <script src="{{ root_path }}/static/js/auth-ui.js?v=5"></script>
 <script src="{{ root_path }}/static/js/graficos.js"></script>
-<script src="{{ root_path }}/static/js/app.js?v=31"></script>
+<script src="{{ root_path }}/static/js/app.js?v=32"></script>
 {% endblock %}

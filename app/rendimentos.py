@@ -1,12 +1,14 @@
 """Rendimento dos fundos do FUNDEB.
 
 No FUNDEB o overnight fica aplicado (Invest. Resgate Automático / BB RF).
-A conferência compara só o saldo dos fundos entre dois extratos:
+A conferência compara o saldo dos fundos entre dois extratos e ajusta
+transferências do livro:
 
-    rendimento = fundos final − fundos anterior
+    rendimento = (fundos final − fundos anterior) + resgates − aplicações
 
-Imposto e despesa na conta corrente não entram nessa conta. A série só
-avança entre dias que já têm saldo de extrato gravado.
+Assim resgate (saída do fundo) não aparece como rendimento negativo, e
+aplicação não aparece como rendimento positivo. Imposto e folha na CC
+não entram. A série só avança entre dias com extrato gravado.
 """
 
 from __future__ import annotations
@@ -162,6 +164,8 @@ RE_TRANSFERENCIA_FUNDO = re.compile(
     r"aplica[cç][aã]o\s+em\s+fundo|aplicacao\s+em\s+fundo",
     re.IGNORECASE,
 )
+RE_RESGATE = re.compile(r"resgate|fundo\s+para\s+cobrir", re.IGNORECASE)
+RE_APLICACAO = re.compile(r"aplica[cç][aã]o|aplicacao", re.IGNORECASE)
 
 
 def _as_date(valor) -> Optional[date]:
@@ -228,8 +232,53 @@ def totais_operacionais(inicio: date, fim: date) -> dict:
     }
 
 
+def _classificar_transferencia(mov: dict) -> Optional[str]:
+    """Retorna 'resgate', 'aplicacao' ou None."""
+    if mov.get("ajuste_saldo"):
+        return None
+    valor = abs(float(mov.get("realizada") or 0.0))
+    if valor < 0.005:
+        return None
+    descricao = clean_text(mov.get("descricao"))
+    categoria = clean_text(mov.get("categoria")).upper()
+    texto = f"{categoria} {descricao}"
+    # Resgate tem prioridade se os dois termos aparecerem.
+    if RE_RESGATE.search(texto):
+        return "resgate"
+    if RE_APLICACAO.search(texto):
+        return "aplicacao"
+    return None
+
+
+def totais_transferencia_fundo(inicio: date, fim: date) -> dict:
+    """Soma resgates e aplicações lançados no intervalo (livro)."""
+    from . import repository
+
+    if inicio > fim:
+        return {"resgates": 0.0, "aplicacoes": 0.0, "qtd": 0}
+
+    resgates = 0.0
+    aplicacoes = 0.0
+    qtd = 0
+    for mov in repository.fetch_movimentos(inicio, fim):
+        tipo = _classificar_transferencia(mov)
+        if not tipo:
+            continue
+        valor = abs(float(mov.get("realizada") or 0.0))
+        qtd += 1
+        if tipo == "resgate":
+            resgates += valor
+        else:
+            aplicacoes += valor
+    return {
+        "resgates": round(resgates, 2),
+        "aplicacoes": round(aplicacoes, 2),
+        "qtd": qtd,
+    }
+
+
 def calcular_rendimento(anterior: dict, atual: dict) -> dict:
-    """Rendimento = variação dos fundos entre dois extratos (sem CC)."""
+    """Rendimento = variação dos fundos + resgates − aplicações."""
     data_ant = anterior.get("data")
     data_atu = atual.get("data")
     if isinstance(data_ant, str):
@@ -239,11 +288,39 @@ def calcular_rendimento(anterior: dict, atual: dict) -> dict:
 
     saldo_anterior = patrimonio_fundos(anterior)
     saldo_final = patrimonio_fundos(atual)
-    rendimento = round(saldo_final - saldo_anterior, 2)
+    variacao = round(saldo_final - saldo_anterior, 2)
+
+    # Janela das transferências:
+    # - fundos caíram: inclui o dia do extrato anterior (resgate lançado antes
+    #   de aparecer no rodapé do próximo arquivo);
+    # - fundos subiram: só dias depois do extrato anterior (não puxa resgate
+    #   ainda não refletido no saldo aplicado).
+    resgates = 0.0
+    aplicacoes = 0.0
+    if isinstance(data_ant, date) and isinstance(data_atu, date):
+        if variacao < 0:
+            transf = totais_transferencia_fundo(data_ant, data_atu)
+            # Só usa resgate para explicar a queda (não cria rendimento extra).
+            resgates = min(float(transf["resgates"]), -variacao)
+            aplicacoes = 0.0
+        elif variacao > 0:
+            inicio = data_ant + timedelta(days=1)
+            transf = totais_transferencia_fundo(inicio, data_atu) if inicio <= data_atu else {
+                "resgates": 0.0,
+                "aplicacoes": 0.0,
+            }
+            # Só desconta aplicação até o tamanho da alta dos fundos.
+            aplicacoes = min(float(transf["aplicacoes"]), variacao)
+            resgates = 0.0
+        else:
+            transf = {"resgates": 0.0, "aplicacoes": 0.0}
+    else:
+        transf = {"resgates": 0.0, "aplicacoes": 0.0}
+
+    rendimento = round(variacao + resgates - aplicacoes, 2)
 
     fundos_ant = dict(anterior.get("fundos") or {})
     fundos_atu = dict(atual.get("fundos") or {})
-    # Inclui o resgate automático na visão por fundo quando não veio no dict.
     auto_ant = float(anterior.get("invest_resgate_auto") or 0.0)
     auto_atu = float(atual.get("invest_resgate_auto") or 0.0)
     if auto_ant and FUNDO_SD not in {normalizar_nome_fundo(n) for n in fundos_ant}:
@@ -267,6 +344,9 @@ def calcular_rendimento(anterior: dict, atual: dict) -> dict:
         "despesas": 0.0,
         "saldo_esperado": saldo_anterior,
         "saldo_final": saldo_final,
+        "variacao_fundos": variacao,
+        "resgates": round(resgates, 2),
+        "aplicacoes": round(aplicacoes, 2),
         "rendimento_total": rendimento,
         "por_fundo": por_fundo,
         "saldo_cc_anterior": float(anterior.get("saldo_cc") or 0.0),
@@ -436,6 +516,9 @@ def serie_rendimentos() -> dict:
             "despesas": None,
             "saldo_esperado": None,
             "saldo_final": fundos,
+            "variacao_fundos": None,
+            "resgates": None,
+            "aplicacoes": None,
             "rendimento_total": None,
             "rendimento_diario": None,
             "por_fundo": [],
@@ -462,11 +545,24 @@ def serie_rendimentos() -> dict:
             else rendimento
         )
 
-        aviso = None
+        def _brl(valor: float) -> str:
+            texto = f"{valor:,.2f}"
+            return texto.replace(",", "X").replace(".", ",").replace("X", ".")
+
+        avisos = []
         if intervalo and intervalo > 1:
-            aviso = (
-                f"Intervalo de {intervalo} dia(s): total do período ÷ {intervalo} "
-                "na média/dia (estimativa uniforme)."
+            avisos.append(
+                f"Intervalo de {intervalo} dia(s): média/dia = total ÷ {intervalo}."
+            )
+        if float(calculo.get("resgates") or 0) > 0.009:
+            avisos.append(
+                f"Resgate R$ {_brl(calculo['resgates'])} somado de volta "
+                "(não é rendimento negativo)."
+            )
+        if float(calculo.get("aplicacoes") or 0) > 0.009:
+            avisos.append(
+                f"Aplicação R$ {_brl(calculo['aplicacoes'])} descontada "
+                "(não é rendimento)."
             )
 
         item.update(
@@ -481,10 +577,13 @@ def serie_rendimentos() -> dict:
                 "despesas": 0.0,
                 "saldo_esperado": calculo["saldo_esperado"],
                 "saldo_final": calculo["saldo_final"],
+                "variacao_fundos": calculo.get("variacao_fundos"),
+                "resgates": calculo.get("resgates"),
+                "aplicacoes": calculo.get("aplicacoes"),
                 "rendimento_total": rendimento,
                 "rendimento_diario": diario,
                 "por_fundo": calculo["por_fundo"],
-                "motivo": aviso,
+                "motivo": " ".join(avisos) if avisos else None,
             }
         )
         total_conferido += float(calculo["rendimento_total"] or 0)
